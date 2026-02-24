@@ -1,0 +1,16 @@
+# Build output
+Builds/
+JuceLibraryCode/
+build/
+*.o
+*.d
+
+# IDE files
+*.xcodeproj/xcuserdata/
+*.xcworkspace/
+.vs/
+*.vcxproj.user
+
+# OS files
+.DS_Store
+Thumbs.db
