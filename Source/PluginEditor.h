@@ -188,9 +188,18 @@ public:
         addAndMakeVisible (searchBox);
 
         // ── Sort combo ────────────────────────────────────────────────────────
-        sortBox.addItem ("Sort: A-Z",    1);
-        sortBox.addItem ("Sort: Z-A",    2);
-        sortBox.addItem ("Sort: Newest", 3);
+        sortBox.addItem ("Sort: A-Z",         1);
+        sortBox.addItem ("Sort: Z-A",         2);
+        sortBox.addItem ("Sort: Newest",      3);
+        sortBox.addSeparator();
+        sortBox.addItem ("Filter: Pads",      4);
+        sortBox.addItem ("Filter: Keys",      5);
+        sortBox.addItem ("Filter: Leads",     6);
+        sortBox.addItem ("Filter: Bass",      7);
+        sortBox.addItem ("Filter: Horns",     8);
+        sortBox.addItem ("Filter: Arp",       9);
+        sortBox.addItem ("Filter: Strings",   10);
+        sortBox.addItem ("Filter: SFX",       11);
         sortBox.setSelectedId (1, juce::dontSendNotification);
         sortBox.setColour (juce::ComboBox::backgroundColourId, juce::Colour(0xff1a1a1a));
         sortBox.setColour (juce::ComboBox::textColourId,       juce::Colour(0xffD4A017));
@@ -240,7 +249,7 @@ public:
 
         // Initial placeholder for folder buttons — real ones built in refreshData()
         folderNames = { "Ethereal", "Circuit", "Analog Soul",
-                        "Dark Matter", "Modular", "Pure", "User Presets" };
+                        "Dark Matter", "Modular", "Pure", "Yamaha DX7 Library", "User Presets" };
         rebuildFolderButtons();
     }
 
@@ -468,27 +477,52 @@ private:
         else
             allPresetsInFolder.clear();
 
-        juce::String query = searchBox.getText().trim().toLowerCase();
+        juce::String query  = searchBox.getText().trim().toLowerCase();
+        int          sortId = sortBox.getSelectedId();
+
+        // Category suffix map: sortId → suffix to match at end of preset name
+        juce::String categoryFilter;
+        switch (sortId)
+        {
+            case 4:  categoryFilter = "_Pad";     break;
+            case 5:  categoryFilter = "_Keys";    break;
+            case 6:  categoryFilter = "_Lead";    break;
+            case 7:  categoryFilter = "_Bass";    break;
+            case 8:  categoryFilter = "_Horn";    break;
+            case 9:  categoryFilter = "_Arp";     break;
+            case 10: categoryFilter = "_Strings"; break;
+            case 11: categoryFilter = "_SFX";     break;
+            default: categoryFilter = "";         break;
+        }
+
         visiblePresets.clear();
 
         for (auto& name : allPresetsInFolder)
-            if (query.isEmpty() || name.toLowerCase().contains (query))
-                visiblePresets.add (name);
+        {
+            // Search filter
+            if (query.isNotEmpty() && !name.toLowerCase().contains (query))
+                continue;
 
-        int sortId = sortBox.getSelectedId();
-        if (sortId == 1)
+            // Category filter — match suffix (case-insensitive)
+            if (categoryFilter.isNotEmpty() &&
+                !name.toLowerCase().endsWith (categoryFilter.toLowerCase()))
+                continue;
+
+            visiblePresets.add (name);
+        }
+
+        // Sort (only A-Z / Z-A / Newest apply; category filters show A-Z by default)
+        if (sortId == 1 || sortId >= 4)
             visiblePresets.sortNatural();
         else if (sortId == 2)
         {
             visiblePresets.sortNatural();
-            // Reverse
             juce::StringArray rev;
             for (int i = visiblePresets.size() - 1; i >= 0; --i)
                 rev.add (visiblePresets[i]);
             visiblePresets = rev;
         }
-        // sortId == 3 (Newest) keeps disk order — already returned newest-first
-        // by getPresetsInFolder if implemented that way in the processor.
+        // sortId == 3 (Newest) keeps disk order
 
         hoveredPresetIndex = -1;
 
@@ -604,6 +638,10 @@ public:
 
 private:
     ARKAudioProcessor& audioProcessor;
+
+    // Wrapper component — all UI children live here so setTransform() can
+    // scale the entire fixed-1400px layout when the window size changes.
+    juce::Component contentComponent;
 
     juce::MidiKeyboardComponent midiKeyboard;
 
@@ -852,16 +890,15 @@ private:
     juce::TextButton bpmBtn;
 
     // -------------------------------------------------------------------------
-    // ARP/SEQ Section
+    // ARP Section
     // -------------------------------------------------------------------------
     juce::TextButton arpOnOffBtn;
-    juce::TextButton arpModeBtn, seqModeBtn;
+    juce::TextButton arpModeBtn;
     juce::Slider     arpRateKnob, arpGateKnob, arpSwingKnob, arpOctaveKnob;
     juce::Label      arpRateLabel, arpGateLabel, arpSwingLabel, arpOctaveLabel;
     juce::TextButton arpUpBtn, arpDownBtn, arpUpDownBtn, arpRandomBtn, arpOrderBtn;
     juce::TextButton arpLatchBtn;
     bool isArpOn   = false;
-    bool isArpMode = true;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> arpRateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> arpGateAttachment;

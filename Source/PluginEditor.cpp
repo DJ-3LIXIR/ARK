@@ -18,13 +18,14 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
       midiKeyboard (p.keyboardState, juce::MidiKeyboardComponent::horizontalKeyboard)
 {
     setSize (1400, 800);
+    addAndMakeVisible(contentComponent);
     
     midiKeyboard.setLookAndFeel(&keyboardLookAndFeel);
     midiKeyboard.setOpaque(false);
-    addAndMakeVisible(midiKeyboard);
+    contentComponent.addAndMakeVisible(midiKeyboard);
     
     // Setup OSC A Controls
-    setupKnob(oscAOctave, oscAOctaveLabel, "OCT", -3, 3, 1, 0);
+    setupKnob(oscAOctave, oscAOctaveLabel, "OCT", -5, 5, 1, 0);
     setupKnob(oscASemitone, oscASemitoneLabel, "SEM", -12, 12, 1, 0);
     setupKnob(oscAFine, oscAFineLabel, "FINE", -100, 100, 1, 0);
     setupKnob(oscAUnison, oscAUnisonLabel, "UNISON", 1, 16, 1, 1);
@@ -38,7 +39,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     setupKnob(oscAChaos, oscAChaosLabel, "CHAOS", 0, 100, 0.1, 0);
     
     // Setup OSC B Controls
-    setupKnob(oscBOctave, oscBOctaveLabel, "OCT", -3, 3, 1, 0);
+    setupKnob(oscBOctave, oscBOctaveLabel, "OCT", -5, 5, 1, 0);
     setupKnob(oscBSemitone, oscBSemitoneLabel, "SEM", -12, 12, 1, 0);
     setupKnob(oscBFine, oscBFineLabel, "FINE", -100, 100, 1, 0);
     setupKnob(oscBUnison, oscBUnisonLabel, "UNISON", 1, 16, 1, 1);
@@ -71,7 +72,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     oscAPowerBtn.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffD4A017));
     oscAPowerBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
     oscAPowerBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
-    addAndMakeVisible(oscAPowerBtn);
+    contentComponent.addAndMakeVisible(oscAPowerBtn);
     oscAPowerBtn.onClick = [this]()
     {
         if (auto* param = audioProcessor.apvts.getParameter("oscAPower"))
@@ -85,7 +86,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     oscBPowerBtn.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffD4A017));
     oscBPowerBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
     oscBPowerBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
-    addAndMakeVisible(oscBPowerBtn);
+    contentComponent.addAndMakeVisible(oscBPowerBtn);
     oscBPowerBtn.onClick = [this]()
     {
         if (auto* param = audioProcessor.apvts.getParameter("oscBPower"))
@@ -123,7 +124,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             }
         }), false);
     };
-    addAndMakeVisible(oscASaveBtn);
+    contentComponent.addAndMakeVisible(oscASaveBtn);
     
     oscAPrevBtn.setButtonText("<");
     oscAPrevBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
@@ -135,7 +136,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         oscAPresetName = audioProcessor.getOscAPresetName();
         repaint();
     };
-    addAndMakeVisible(oscAPrevBtn);
+    contentComponent.addAndMakeVisible(oscAPrevBtn);
     
     oscANextBtn.setButtonText(">");
     oscANextBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
@@ -147,7 +148,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         oscAPresetName = audioProcessor.getOscAPresetName();
         repaint();
     };
-    addAndMakeVisible(oscANextBtn);
+    contentComponent.addAndMakeVisible(oscANextBtn);
     
     // -------------------------------------------------------------------------
     // OSC B Preset Controls
@@ -178,7 +179,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             }
         }), false);
     };
-    addAndMakeVisible(oscBSaveBtn);
+    contentComponent.addAndMakeVisible(oscBSaveBtn);
     
     oscBPrevBtn.setButtonText("<");
     oscBPrevBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
@@ -190,7 +191,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         oscBPresetName = audioProcessor.getOscBPresetName();
         repaint();
     };
-    addAndMakeVisible(oscBPrevBtn);
+    contentComponent.addAndMakeVisible(oscBPrevBtn);
     
     oscBNextBtn.setButtonText(">");
     oscBNextBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
@@ -202,7 +203,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         oscBPresetName = audioProcessor.getOscBPresetName();
         repaint();
     };
-    addAndMakeVisible(oscBNextBtn);
+    contentComponent.addAndMakeVisible(oscBNextBtn);
 
     oscACurrentWave = 0;
     oscBCurrentWave = 1;
@@ -223,7 +224,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     // -------------------------------------------------------------------------
     // SUB Oscillator
     // -------------------------------------------------------------------------
-    setupKnob(subOctave, subOctaveLabel, "OCT",   -3,  0,   1, -1);
+    setupKnob(subOctave, subOctaveLabel, "OCT",   -5,  5,   1, -1);
     setupKnob(subLevel,  subLevelLabel,  "LEVEL",  0, 100, 0.1, 75);
     setupKnob(subPan,    subPanLabel,    "PAN",  -100, 100, 0.1,  0);
 
@@ -243,7 +244,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             param->setValueNotifyingHost (param->convertTo0to1 (0.0f));
         repaint();
     };
-    addAndMakeVisible(subSineBtn);
+    contentComponent.addAndMakeVisible(subSineBtn);
 
     subSquareBtn.setButtonText("SQR");
     subSquareBtn.setClickingTogglesState(true);
@@ -260,7 +261,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             param->setValueNotifyingHost (param->convertTo0to1 (1.0f));
         repaint();
     };
-    addAndMakeVisible(subSquareBtn);
+    contentComponent.addAndMakeVisible(subSquareBtn);
 
     subSineBtn.setToggleState(true, juce::dontSendNotification);
 
@@ -277,7 +278,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         if (auto* param = audioProcessor.apvts.getParameter ("subPower"))
             param->setValueNotifyingHost (subPowerBtn.getToggleState() ? 1.0f : 0.0f);
     };
-    addAndMakeVisible(subPowerBtn);
+    contentComponent.addAndMakeVisible(subPowerBtn);
 
     // Filter type buttons (radio group 2000)
     setupFilterButton(filterLpBtn,    "LP",    0);
@@ -310,7 +311,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     filterCharacterBox.setColour(juce::ComboBox::focusedOutlineColourId, juce::Colour(0xffD4A017));
     filterCharacterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "filterCharacter", filterCharacterBox);
-    addAndMakeVisible(filterCharacterBox);
+    contentComponent.addAndMakeVisible(filterCharacterBox);
 
     // Filter envelope ADSR
     setupKnob(filterAttack,  filterAttackLabel,  "ATK",  0.0, 5000.0, 1.0,  10.0);
@@ -342,7 +343,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             param->setValueNotifyingHost (param->convertTo0to1 (0.0f));
         repaint();
     };
-    addAndMakeVisible(noiseWhiteBtn);
+    contentComponent.addAndMakeVisible(noiseWhiteBtn);
 
     noisePinkBtn.setButtonText("PINK");
     noisePinkBtn.setClickingTogglesState(true);
@@ -359,7 +360,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             param->setValueNotifyingHost (param->convertTo0to1 (1.0f));
         repaint();
     };
-    addAndMakeVisible(noisePinkBtn);
+    contentComponent.addAndMakeVisible(noisePinkBtn);
 
     noiseBrownBtn.setButtonText("BROWN");
     noiseBrownBtn.setClickingTogglesState(true);
@@ -376,7 +377,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             param->setValueNotifyingHost (param->convertTo0to1 (2.0f));
         repaint();
     };
-    addAndMakeVisible(noiseBrownBtn);
+    contentComponent.addAndMakeVisible(noiseBrownBtn);
 
     noiseWhiteBtn.setToggleState(true, juce::dontSendNotification);
 
@@ -393,7 +394,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         if (auto* param = audioProcessor.apvts.getParameter ("noisePower"))
             param->setValueNotifyingHost (noisePowerBtn.getToggleState() ? 1.0f : 0.0f);
     };
-    addAndMakeVisible(noisePowerBtn);
+    contentComponent.addAndMakeVisible(noisePowerBtn);
 
     // TGL button Ã¢â‚¬â€ FREE (drone) vs KEY (triggered)
     noiseTglBtn.setButtonText("FREE");
@@ -413,7 +414,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             param->setValueNotifyingHost (noiseIsFree ? 0.0f : 1.0f);
         repaint();
     };
-    addAndMakeVisible(noiseTglBtn);
+    contentComponent.addAndMakeVisible(noiseTglBtn);
 
     // -------------------------------------------------------------------------
     // CONTROLS Section (Voicing, Velocity, etc.)
@@ -434,7 +435,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             p->store(1.0f);
         repaint();
     };
-    addAndMakeVisible(voicingMonoBtn);
+    contentComponent.addAndMakeVisible(voicingMonoBtn);
 
     voicingPolyBtn.setButtonText("POLY");
     voicingPolyBtn.setClickingTogglesState(true);
@@ -450,7 +451,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             p->store(0.0f);
         repaint();
     };
-    addAndMakeVisible(voicingPolyBtn);
+    contentComponent.addAndMakeVisible(voicingPolyBtn);
 
     voicingPolyBtn.setToggleState(true, juce::dontSendNotification); // Default to POLY
 
@@ -468,7 +469,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         if (auto* p = audioProcessor.apvts.getRawParameterValue("legato"))
             p->store(isLegatoEnabled ? 1.0f : 0.0f);
     };
-    addAndMakeVisible(legatoBtn);
+    contentComponent.addAndMakeVisible(legatoBtn);
 
     // Voice control sliders
     setupKnob(maxVoices,    maxVoicesLabel,    "MAX",   1, 16, 1, 16);
@@ -491,7 +492,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             audioProcessor.apvts, "veloCurve", curveSlider);
         repaint();
     };
-    addAndMakeVisible(veloTab);
+    contentComponent.addAndMakeVisible(veloTab);
     
     noteTab.setButtonText("NOTE");
     noteTab.setClickingTogglesState(true);
@@ -508,7 +509,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             audioProcessor.apvts, "noteTrackCurve", curveSlider);
         repaint();
     };
-    addAndMakeVisible(noteTab);
+    contentComponent.addAndMakeVisible(noteTab);
     
     veloTab.setToggleState(true, juce::dontSendNotification); // Default to VELO
     
@@ -530,7 +531,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             p->store(1.0f);
         repaint();
     };
-    addAndMakeVisible(alwaysBtn);
+    contentComponent.addAndMakeVisible(alwaysBtn);
     
     scaledBtn.setButtonText("SCALED");
     scaledBtn.setClickingTogglesState(true);
@@ -545,7 +546,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             p->store(0.0f);
         repaint();
     };
-    addAndMakeVisible(scaledBtn);
+    contentComponent.addAndMakeVisible(scaledBtn);
     
     alwaysBtn.setToggleState(true, juce::dontSendNotification); // Default to ALWAYS
 
@@ -612,7 +613,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             
             repaint();
         };
-    addAndMakeVisible(env1Tab);
+    contentComponent.addAndMakeVisible(env1Tab);
     
     env2Tab.setButtonText("ENV 2");
     env2Tab.setClickingTogglesState(true);
@@ -662,7 +663,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             
             repaint();
         };
-    addAndMakeVisible(env2Tab);
+    contentComponent.addAndMakeVisible(env2Tab);
     
     env3Tab.setButtonText("ENV 3");
     env3Tab.setClickingTogglesState(true);
@@ -712,7 +713,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             
             repaint();
         };
-    addAndMakeVisible(env3Tab);
+    contentComponent.addAndMakeVisible(env3Tab);
     
     env1Tab.setToggleState(true, juce::dontSendNotification); // Default to ENV 1
     
@@ -769,7 +770,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envOffBtn.setToggleState(trigMode == 2, juce::dontSendNotification);
         repaint();
     };
-    addAndMakeVisible(lfo1Tab);
+    contentComponent.addAndMakeVisible(lfo1Tab);
     
     lfo2Tab.setButtonText("LFO 2");
     lfo2Tab.setClickingTogglesState(true);
@@ -819,7 +820,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envOffBtn.setToggleState(trigMode == 2, juce::dontSendNotification);
         repaint();
     };
-    addAndMakeVisible(lfo2Tab);
+    contentComponent.addAndMakeVisible(lfo2Tab);
     
     lfo3Tab.setButtonText("LFO 3");
     lfo3Tab.setClickingTogglesState(true);
@@ -869,7 +870,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envOffBtn.setToggleState(trigMode == 2, juce::dontSendNotification);
         repaint();
     };
-    addAndMakeVisible(lfo3Tab);
+    contentComponent.addAndMakeVisible(lfo3Tab);
     
     lfo4Tab.setButtonText("LFO 4");
     lfo4Tab.setClickingTogglesState(true);
@@ -919,7 +920,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envOffBtn.setToggleState(trigMode == 2, juce::dontSendNotification);
         repaint();
     };
-    addAndMakeVisible(lfo4Tab);
+    contentComponent.addAndMakeVisible(lfo4Tab);
     
     lfo1Tab.setToggleState(true, juce::dontSendNotification); // Default to LFO 1
 
@@ -945,7 +946,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             
             repaint();
         };
-        addAndMakeVisible(btn);
+        contentComponent.addAndMakeVisible(btn);
     };
     setupLfoWaveBtn(lfoSineBtn,   "SIN", 0);
     setupLfoWaveBtn(lfoSawBtn,    "SAW", 1);
@@ -1007,7 +1008,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envEnvBtn.setToggleState(false, juce::dontSendNotification);
         envOffBtn.setToggleState(false, juce::dontSendNotification);
     };
-    addAndMakeVisible(envTrigBtn);
+    contentComponent.addAndMakeVisible(envTrigBtn);
     
     envEnvBtn.setButtonText("FREE");
     envEnvBtn.setClickingTogglesState(true);
@@ -1026,7 +1027,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envEnvBtn.setToggleState(true, juce::dontSendNotification);
         envOffBtn.setToggleState(false, juce::dontSendNotification);
     };
-    addAndMakeVisible(envEnvBtn);
+    contentComponent.addAndMakeVisible(envEnvBtn);
     
     envOffBtn.setButtonText("OFF");
     envOffBtn.setClickingTogglesState(true);
@@ -1045,14 +1046,14 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         envEnvBtn.setToggleState(false, juce::dontSendNotification);
         envOffBtn.setToggleState(true, juce::dontSendNotification);
     };
-    addAndMakeVisible(envOffBtn);
+    contentComponent.addAndMakeVisible(envOffBtn);
     
     envTrigBtn.setToggleState(true, juce::dontSendNotification);
     
     // =========================================================================
-    // ARP/SEQ Section
+    // ARP Section
     // =========================================================================
-    
+
     // ON/OFF button
     arpOnOffBtn.setButtonText("ON");
     arpOnOffBtn.setClickingTogglesState(true);
@@ -1063,40 +1064,26 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     arpOnOffBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     arpOnOffBtn.setLookAndFeel(&waveBtnLookAndFeel);
     arpOnOffBtn.onClick = [this] { isArpOn = arpOnOffBtn.getToggleState(); audioProcessor.apvts.getRawParameterValue("arpOnOff")->store(isArpOn ? 1.0f : 0.0f); };
-    addAndMakeVisible(arpOnOffBtn);
-    
-    // Mode selector buttons (ARP / SEQ) - radio group 11000
+    contentComponent.addAndMakeVisible(arpOnOffBtn);
+
+    // ARP mode button
     arpModeBtn.setButtonText("ARP");
     arpModeBtn.setClickingTogglesState(true);
-    arpModeBtn.setRadioGroupId(11000);
     arpModeBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
     arpModeBtn.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffD4A017));
     arpModeBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
     arpModeBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     arpModeBtn.setLookAndFeel(&waveBtnLookAndFeel);
-    arpModeBtn.onClick = [this] { isArpMode = true; audioProcessor.apvts.getRawParameterValue("arpMode")->store(0.0f); };
-    addAndMakeVisible(arpModeBtn);
-    
-    seqModeBtn.setButtonText("SEQ");
-    seqModeBtn.setClickingTogglesState(true);
-    seqModeBtn.setRadioGroupId(11000);
-    seqModeBtn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
-    seqModeBtn.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffD4A017));
-    seqModeBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
-    seqModeBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
-    seqModeBtn.setLookAndFeel(&waveBtnLookAndFeel);
-    seqModeBtn.onClick = [this] { isArpMode = false; audioProcessor.apvts.getRawParameterValue("arpMode")->store(1.0f); };
-    addAndMakeVisible(seqModeBtn);
-    
     arpModeBtn.setToggleState(true, juce::dontSendNotification);
-    
-    // Knobs for ARP/SEQ
+    contentComponent.addAndMakeVisible(arpModeBtn);
+
+    // Knobs for ARP
     setupKnob(arpRateKnob, arpRateLabel, "RATE", 0.0, 16.0, 1.0, 4.0);
     setupKnob(arpGateKnob, arpGateLabel, "GATE", 0.0, 100.0, 0.1, 50.0);
     setupKnob(arpSwingKnob, arpSwingLabel, "SWING", 0.0, 100.0, 0.1, 0.0);
     setupKnob(arpOctaveKnob, arpOctaveLabel, "OCT", 1.0, 4.0, 1.0, 1.0);
 
-    // APVTS slider attachments for ARP/SEQ knobs
+    // APVTS slider attachments for ARP knobs
     arpRateAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "arpRate", arpRateKnob);
     arpGateAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "arpGate", arpGateKnob);
     arpSwingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(audioProcessor.apvts, "arpSwing", arpSwingKnob);
@@ -1113,7 +1100,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         btn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
         btn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
         btn.setLookAndFeel(&waveBtnLookAndFeel);
-        addAndMakeVisible(btn);
+        contentComponent.addAndMakeVisible(btn);
     };
     
     setupPatternBtn(arpUpBtn, "UP");
@@ -1139,7 +1126,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     arpLatchBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
     arpLatchBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     arpLatchBtn.setLookAndFeel(&waveBtnLookAndFeel);
-    addAndMakeVisible(arpLatchBtn);
+    contentComponent.addAndMakeVisible(arpLatchBtn);
     arpLatchBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpLatch")->store(arpLatchBtn.getToggleState() ? 1.0f : 0.0f); };
     
     // =========================================================================
@@ -1177,13 +1164,13 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         s.setRange(min, max, interval);
         s.setValue(def);
         s.setLookAndFeel(&masterDialLookAndFeel);
-        addAndMakeVisible(s);
+        contentComponent.addAndMakeVisible(s);
 
         l.setText(name, juce::dontSendNotification);
         l.setFont(juce::FontOptions(8.5f));
         l.setColour(juce::Label::textColourId, juce::Colour(0xffD4A017));
         l.setJustificationType(juce::Justification::centred);
-        addAndMakeVisible(l);
+        contentComponent.addAndMakeVisible(l);
     };
 
     setupMasterDial(masterVolumeDial, masterVolumeLabel, "VOLUME",  0.0,  100.0, 0.1, 80.0);
@@ -1198,7 +1185,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         valLabel.setFont(juce::FontOptions(11.0f));
         valLabel.setColour(juce::Label::textColourId, juce::Colours::white);
         valLabel.setJustificationType(juce::Justification::centredLeft);
-        addAndMakeVisible(valLabel);
+        contentComponent.addAndMakeVisible(valLabel);
 
         dial.onValueChange = [&valLabel, &dial]()
         {
@@ -1215,18 +1202,6 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     // #pragma region Global Page
     // =========================================================================
 
-    // Helper lambda to style all global ComboBoxes with the ARK dark theme
-    auto styleComboBox = [](juce::ComboBox& cb) {
-        cb.setColour(juce::ComboBox::backgroundColourId,   juce::Colour(0xff2a2a2a));
-        cb.setColour(juce::ComboBox::outlineColourId,      juce::Colour(0xff64470A));
-        cb.setColour(juce::ComboBox::textColourId,         juce::Colour(0xffD4A017));
-        cb.setColour(juce::ComboBox::arrowColourId,        juce::Colour(0xffD4A017));
-        cb.setColour(juce::PopupMenu::backgroundColourId,  juce::Colour(0xff1e1e1e));
-        cb.setColour(juce::PopupMenu::textColourId,        juce::Colour(0xffdddddd));
-        cb.setColour(juce::PopupMenu::highlightedBackgroundColourId, juce::Colour(0xffD4A017));
-        cb.setColour(juce::PopupMenu::highlightedTextColourId,       juce::Colours::black);
-    };
-
     // ── LEFT: SYNTH CONTROLS ─────────────────────────────────────────────────
 
     // Voice Mode
@@ -1234,13 +1209,13 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalVoiceModeBox.addItem("MONO", 2);
     globalVoiceModeBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalVoiceModeBox);
-    addChildComponent(globalVoiceModeBox);
+    contentComponent.addChildComponent(globalVoiceModeBox);
     globalVoiceModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "monoMode", globalVoiceModeBox);
 
     // Max Voices
     styleGlobalSlider(globalMaxVoicesSlider);
-    addChildComponent(globalMaxVoicesSlider);
+    contentComponent.addChildComponent(globalMaxVoicesSlider);
     globalMaxVoicesAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "maxVoicesParam", globalMaxVoicesSlider);
 
@@ -1251,7 +1226,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalVoiceStealBox.addItem("LOWEST",   4);
     globalVoiceStealBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalVoiceStealBox);
-    addChildComponent(globalVoiceStealBox);
+    contentComponent.addChildComponent(globalVoiceStealBox);
     globalVoiceStealAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "voiceStealMode", globalVoiceStealBox);
 
@@ -1260,31 +1235,31 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalLegatoBox.addItem("ON",  2);
     globalLegatoBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalLegatoBox);
-    addChildComponent(globalLegatoBox);
+    contentComponent.addChildComponent(globalLegatoBox);
     globalLegatoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "legato", globalLegatoBox);
 
     // Pitch Bend Up
     styleGlobalSlider(globalPitchBendUpSlider);
-    addChildComponent(globalPitchBendUpSlider);
+    contentComponent.addChildComponent(globalPitchBendUpSlider);
     globalPitchBendUpAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "pitchBendUp", globalPitchBendUpSlider);
 
     // Pitch Bend Down
     styleGlobalSlider(globalPitchBendDownSlider);
-    addChildComponent(globalPitchBendDownSlider);
+    contentComponent.addChildComponent(globalPitchBendDownSlider);
     globalPitchBendDownAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "pitchBendDown", globalPitchBendDownSlider);
 
     // Porta Time
     styleGlobalSlider(globalPortaTimeSlider);
-    addChildComponent(globalPortaTimeSlider);
+    contentComponent.addChildComponent(globalPortaTimeSlider);
     globalPortaTimeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "portaTime", globalPortaTimeSlider);
 
     // Porta Curve
     styleGlobalSlider(globalPortaCurveSlider);
-    addChildComponent(globalPortaCurveSlider);
+    contentComponent.addChildComponent(globalPortaCurveSlider);
     globalPortaCurveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "portaCurve", globalPortaCurveSlider);
 
@@ -1293,19 +1268,19 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalPortaModeBox.addItem("ALWAYS", 2);
     globalPortaModeBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalPortaModeBox);
-    addChildComponent(globalPortaModeBox);
+    contentComponent.addChildComponent(globalPortaModeBox);
     globalPortaModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "portaAlways", globalPortaModeBox);
 
     // Velo Curve
     styleGlobalSlider(globalVeloCurveSlider);
-    addChildComponent(globalVeloCurveSlider);
+    contentComponent.addChildComponent(globalVeloCurveSlider);
     globalVeloCurveAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "veloCurve", globalVeloCurveSlider);
 
     // Note Track
     styleGlobalSlider(globalNoteTrackSlider);
-    addChildComponent(globalNoteTrackSlider);
+    contentComponent.addChildComponent(globalNoteTrackSlider);
     globalNoteTrackAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "noteTrackCurve", globalNoteTrackSlider);
 
@@ -1317,7 +1292,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalModWheelDestBox.addItem("LFO RATE",      5);
     globalModWheelDestBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalModWheelDestBox);
-    addChildComponent(globalModWheelDestBox);
+    contentComponent.addChildComponent(globalModWheelDestBox);
     globalModWheelDestAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "modWheelDest", globalModWheelDestBox);
 
@@ -1331,11 +1306,13 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     styleGlobalCombo(globalWindowSizeBox);
     globalWindowSizeBox.onChange = [this] {
         globalWindowSize = globalWindowSizeBox.getSelectedId() - 1;
-        const int widths[]  = { 900, 1403, 1800 };
-        const int heights[] = { 600,  826, 1050 };
+        const int widths[]          = { 900, 1400, 1800 };
+        const int heightsWithKeys[] = { 514,  800, 1029 };
+        const int heightsNoKeys[]   = { 450,  700,  900 };
+        const int* heights = globalShowKeyboard ? heightsWithKeys : heightsNoKeys;
         setSize(widths[globalWindowSize], heights[globalWindowSize]);
     };
-    addChildComponent(globalWindowSizeBox);
+    contentComponent.addChildComponent(globalWindowSizeBox);
 
     // Show Keyboard
     globalShowKeyboardBox.addItem("OFF", 1);
@@ -1345,9 +1322,33 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalShowKeyboardBox.onChange = [this] {
         globalShowKeyboard = (globalShowKeyboardBox.getSelectedId() == 2);
         midiKeyboard.setVisible(globalShowKeyboard);
-        resized();
+        pitchWheelSlider.setVisible(globalShowKeyboard);
+        modWheelSlider.setVisible(globalShowKeyboard);
+        octMinusBtn.setVisible(globalShowKeyboard);
+        octPlusBtn.setVisible(globalShowKeyboard);
+        octValueLabel.setVisible(globalShowKeyboard);
+        semiMinusBtn.setVisible(globalShowKeyboard);
+        semiPlusBtn.setVisible(globalShowKeyboard);
+        semiValueLabel.setVisible(globalShowKeyboard);
+        // Resize window to add/remove the 100px keyboard row
+        const int widths[]          = { 900, 1400, 1800 };
+        const int heightsWithKeys[] = { 514,  800, 1029 };
+        const int heightsNoKeys[]   = { 450,  700,  900 };
+        const int* heights = globalShowKeyboard ? heightsWithKeys : heightsNoKeys;
+        setSize(widths[globalWindowSize], heights[globalWindowSize]);
+        repaint();
     };
-    addChildComponent(globalShowKeyboardBox);
+    contentComponent.addChildComponent(globalShowKeyboardBox);
+
+    // Apply initial keyboard visibility state
+    pitchWheelSlider.setVisible(globalShowKeyboard);
+    modWheelSlider.setVisible(globalShowKeyboard);
+    octMinusBtn.setVisible(globalShowKeyboard);
+    octPlusBtn.setVisible(globalShowKeyboard);
+    octValueLabel.setVisible(globalShowKeyboard);
+    semiMinusBtn.setVisible(globalShowKeyboard);
+    semiPlusBtn.setVisible(globalShowKeyboard);
+    semiValueLabel.setVisible(globalShowKeyboard);
 
     // Show Scope
     globalShowScopeBox.addItem("OFF", 1);
@@ -1360,7 +1361,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         // scopeComponent.setVisible(globalShowScope);
         resized();
     };
-    addChildComponent(globalShowScopeBox);
+    contentComponent.addChildComponent(globalShowScopeBox);
 
     // MIDI Channel
     globalMidiChannelBox.addItem("ALL", 1);
@@ -1368,7 +1369,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         globalMidiChannelBox.addItem(juce::String(ch), ch + 1);
     globalMidiChannelBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalMidiChannelBox);
-    addChildComponent(globalMidiChannelBox);
+    contentComponent.addChildComponent(globalMidiChannelBox);
     globalMidiChannelAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "midiChannel", globalMidiChannelBox);
 
@@ -1377,7 +1378,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     globalMidiThruBox.addItem("ON",  2);
     globalMidiThruBox.setSelectedId(1, juce::dontSendNotification);
     styleGlobalCombo(globalMidiThruBox);
-    addChildComponent(globalMidiThruBox);
+    contentComponent.addChildComponent(globalMidiThruBox);
     globalMidiThruAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
         audioProcessor.apvts, "midiThru", globalMidiThruBox);
 
@@ -1414,7 +1415,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             src.setColour(juce::ComboBox::textColourId,       juce::Colour(0xffD4A017));
             src.setColour(juce::ComboBox::outlineColourId,    juce::Colour(0xff3a3a3a));
             src.setColour(juce::ComboBox::arrowColourId,      juce::Colour(0xffD4A017));
-            addChildComponent(src);
+            contentComponent.addChildComponent(src);
             matrixSourceAttachment[i] = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
                 audioProcessor.apvts, "matrixSource" + idx, src);
 
@@ -1427,7 +1428,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             dst.setColour(juce::ComboBox::textColourId,       juce::Colour(0xffD4A017));
             dst.setColour(juce::ComboBox::outlineColourId,    juce::Colour(0xff3a3a3a));
             dst.setColour(juce::ComboBox::arrowColourId,      juce::Colour(0xffD4A017));
-            addChildComponent(dst);
+            contentComponent.addChildComponent(dst);
             matrixDestAttachment[i] = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment>(
                 audioProcessor.apvts, "matrixDest" + idx, dst);
 
@@ -1443,7 +1444,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
             amt.setColour(juce::Slider::textBoxTextColourId,  juce::Colour(0xffD4A017));
             amt.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1a1a1a));
             amt.setColour(juce::Slider::textBoxOutlineColourId,    juce::Colours::transparentBlack);
-            addChildComponent(amt);
+            contentComponent.addChildComponent(amt);
             matrixAmountAttachment[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
                 audioProcessor.apvts, "matrixAmount" + idx, amt);
 
@@ -1461,7 +1462,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
                 auto* param = audioProcessor.apvts.getParameter("matrixEnabled" + idx);
                 if (param) param->setValueNotifyingHost(matrixEnableBtn[i].getToggleState() ? 1.0f : 0.0f);
             };
-            addChildComponent(btn);
+            contentComponent.addChildComponent(btn);
         }
     }
 
@@ -1478,7 +1479,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         btn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
         btn.setLookAndFeel(&waveBtnLookAndFeel);
         btn.onClick = [this, pageIdx] { showPage(pageIdx); };
-        addAndMakeVisible(btn);
+        contentComponent.addAndMakeVisible(btn);
     };
 
     setupPageTab(oscTabBtn, "OSC", 0);
@@ -1490,13 +1491,13 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     presetBtn.setButtonText("< Init Preset >");
     presetBtn.setColour(juce::TextButton::buttonColourId,  juce::Colour(0xff2a2a2a));
     presetBtn.setColour(juce::TextButton::textColourOffId, juce::Colours::white.withAlpha(0.7f));
-    addAndMakeVisible(presetBtn);
+    contentComponent.addAndMakeVisible(presetBtn);
     presetBtn.onClick = [this] { openPresetBrowser(); };
 
     savePresetBtn.setButtonText("SAVE");
     savePresetBtn.setColour(juce::TextButton::buttonColourId,  juce::Colour(0xff2a2a2a));
     savePresetBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffD4A017));
-    addAndMakeVisible(savePresetBtn);
+    contentComponent.addAndMakeVisible(savePresetBtn);
     savePresetBtn.onClick = [this] { openSavePresetDialog(); };
 
     // ---- PITCH WHEEL ----
@@ -1518,7 +1519,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     pitchWheelSlider.onDragEnd = [this] {
         pitchWheelSlider.setValue(0.0, juce::sendNotification);
     };
-    addAndMakeVisible(pitchWheelSlider);
+    contentComponent.addAndMakeVisible(pitchWheelSlider);
 
     // ---- MOD WHEEL ----
     modWheelSlider.setSliderStyle(juce::Slider::LinearVertical);
@@ -1532,7 +1533,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         int midiVal = juce::roundToInt(modWheelSlider.getValue() * 127.0);
         audioProcessor.incomingModWheel = midiVal;
     };
-    addAndMakeVisible(modWheelSlider);
+    contentComponent.addAndMakeVisible(modWheelSlider);
 
     // ---- OCT BUTTONS ----
     auto styleCtrlBtn = [](juce::TextButton& btn, const juce::String& text) {
@@ -1561,10 +1562,10 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         if (keyboardSemi < 12)  { keyboardSemi++; updateOctSemiDisplay(); }
     };
 
-    addAndMakeVisible(octMinusBtn);
-    addAndMakeVisible(octPlusBtn);
-    addAndMakeVisible(semiMinusBtn);
-    addAndMakeVisible(semiPlusBtn);
+    contentComponent.addAndMakeVisible(octMinusBtn);
+    contentComponent.addAndMakeVisible(octPlusBtn);
+    contentComponent.addAndMakeVisible(semiMinusBtn);
+    contentComponent.addAndMakeVisible(semiPlusBtn);
 
     // ---- OCT / SEMI VALUE LABELS ----
     auto styleValLabel = [](juce::Label& lbl) {
@@ -1578,8 +1579,8 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     styleValLabel(octValueLabel);
     styleValLabel(semiValueLabel);
 
-    addAndMakeVisible(octValueLabel);
-    addAndMakeVisible(semiValueLabel);
+    contentComponent.addAndMakeVisible(octValueLabel);
+    contentComponent.addAndMakeVisible(semiValueLabel);
 
     // Default to OSC page
     showPage(0);
@@ -1834,7 +1835,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         
         // Destination dropdown label
         env3DestinationLabel.setText ("ENV 3", juce::dontSendNotification);
-        env3DestinationLabel.setFont (juce::Font (11.0f, juce::Font::bold));
+        env3DestinationLabel.setFont (juce::Font (juce::FontOptions(11.0f).withStyle("Bold")));
         env3DestinationLabel.setColour (juce::Label::textColourId, juce::Colours::white);
         env3DestinationLabel.setJustificationType (juce::Justification::centred);
         addAndMakeVisible (env3DestinationLabel);
@@ -1993,13 +1994,13 @@ void ARKAudioProcessorEditor::setupKnob(juce::Slider& slider, juce::Label& label
     slider.setColour(juce::Slider::textBoxTextColourId, juce::Colours::white);
     slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colour(0xff1a1a1a));
     slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0xff2a2a2a));
-    addAndMakeVisible(slider);
+    contentComponent.addAndMakeVisible(slider);
     
     label.setText(labelText, juce::dontSendNotification);
     label.setFont(juce::FontOptions(9.0f));
     label.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
     label.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(label);
+    contentComponent.addAndMakeVisible(label);
 }
 
 void ARKAudioProcessorEditor::styleGlobalCombo (juce::ComboBox& box)
@@ -2097,7 +2098,7 @@ void ARKAudioProcessorEditor::setupWaveButton(juce::TextButton& button, const ju
         }
     };
     
-    addAndMakeVisible(button);
+    contentComponent.addAndMakeVisible(button);
 }
 
 void ARKAudioProcessorEditor::setupFilterButton(juce::TextButton& button, const juce::String& text, int typeIndex)
@@ -2117,7 +2118,7 @@ void ARKAudioProcessorEditor::setupFilterButton(juce::TextButton& button, const 
         repaint();
     };
 
-    addAndMakeVisible(button);
+    contentComponent.addAndMakeVisible(button);
 }
 
 void ARKAudioProcessorEditor::drawWaveform(juce::Graphics& g, int x, int y, int width, int height, int waveType)
@@ -3037,10 +3038,9 @@ ARKAudioProcessorEditor::~ARKAudioProcessorEditor()
     envEnvBtn.setLookAndFeel(nullptr);
     envOffBtn.setLookAndFeel(nullptr);
     
-    // ARP/SEQ section
+    // ARP section
     arpOnOffBtn.setLookAndFeel(nullptr);
     arpModeBtn.setLookAndFeel(nullptr);
-    seqModeBtn.setLookAndFeel(nullptr);
     arpRateKnob.setLookAndFeel(nullptr);
     arpGateKnob.setLookAndFeel(nullptr);
     arpSwingKnob.setLookAndFeel(nullptr);
@@ -3234,10 +3234,9 @@ void ARKAudioProcessorEditor::showPage(int pageIndex)
     scaledBtn.setVisible(oscVisible);
 
 
-    // ---- ARP/SEQ (bottom strip) ----
+    // ---- ARP (bottom strip) ----
     arpOnOffBtn.setVisible(oscVisible);
     arpModeBtn.setVisible(oscVisible);
-    seqModeBtn.setVisible(oscVisible);
     arpRateKnob.setVisible(oscVisible);   arpRateLabel.setVisible(oscVisible);
     arpGateKnob.setVisible(oscVisible);   arpGateLabel.setVisible(oscVisible);
     arpSwingKnob.setVisible(oscVisible);  arpSwingLabel.setVisible(oscVisible);
@@ -3422,58 +3421,66 @@ void ARKAudioProcessorEditor::closePresetBrowser()
 
 void ARKAudioProcessorEditor::paint (juce::Graphics& g)
 {
+    // Scale paint to match contentComponent's 1400px reference coordinate space
+    const float paintScale = (float)getWidth() / 1400.0f;
+    g.addTransform(juce::AffineTransform::scale(paintScale));
+
     // Main area background - gold on OSC page, dark on other pages
     if (currentPage == 0)
         g.setColour(juce::Colour(0xffD4A017));  // Gold for OSC page
     else
         g.setColour(juce::Colour(0xff1a1a1a));  // Dark for FX/MATRIX/GLOBAL
-    g.fillRect(0, 0, 1400, 700);
+    const int refH = juce::roundToInt((float)getHeight() / paintScale);
+    g.fillRect(0, 0, 1400, refH);
     
-    // Gold bar - only draw from x=0 to x=1200 (don't cover piano controls at x=1200)
-    g.setColour(juce::Colour(0xffD4A017));
-    g.fillRect(0, 700, 1200, 100);
-
-    // =========================================================================
-    // PIANO CONTROLS PANEL  (x=1200, y=700, w=200, h=100)
-    // Pitch Bend | Mod Wheel | OCT-/OCT+ | SEMI
-    // =========================================================================
+    if (globalShowKeyboard)
     {
-        const int pcX = 1200;
-        const int pcY = 700;
-        const int pcW = 200;
-        const int pcH = 100;
-
-        // Gold top accent line
+        // Gold bar - only draw from x=0 to x=1200 (don't cover piano controls at x=1200)
         g.setColour(juce::Colour(0xffD4A017));
-        g.fillRect(pcX + 2, pcY + 2, pcW - 4, 2);
+        g.fillRect(0, 700, 1200, 100);
 
-        // Black background panel
-        g.setColour(juce::Colours::black);
-        g.fillRect(1202, 702, 196, 94);
+        // =========================================================================
+        // PIANO CONTROLS PANEL  (x=1200, y=700, w=200, h=100)
+        // Pitch Bend | Mod Wheel | OCT-/OCT+ | SEMI
+        // =========================================================================
+        {
+            const int pcX = 1200;
+            const int pcY = 700;
+            const int pcW = 200;
+            const int pcH = 100;
 
-        // Thin vertical gold divider
-        g.setColour(juce::Colour(0xffD4A017));
-        g.drawLine(pcX + 1.0f, pcY + 4.0f, pcX + 1.0f, pcY + pcH - 4.0f, 1.5f);
+            // Gold top accent line
+            g.setColour(juce::Colour(0xffD4A017));
+            g.fillRect(pcX + 2, pcY + 2, pcW - 4, 2);
 
-        // Static labels (PITCH / MOD / OCT / SEMI) — keep these drawn labels
-        g.setColour(juce::Colour(0xff888888));
-        g.setFont(juce::FontOptions(7.5f).withStyle("Bold"));
+            // Black background panel
+            g.setColour(juce::Colours::black);
+            g.fillRect(1202, 702, 196, 94);
 
-        const int controlsOffsetX = 37;
-        const int pbX  = pcX + controlsOffsetX;
-        const int pbY  = pcY + 14;
-        const int pbW  = 22;
-        const int pbH  = 72;
-        const int mwX  = pbX + pbW + 7;
-        const int octX = mwX + pbW + 10;
-        const int octBtnW = 28;
-        const int semiX = octX + octBtnW + 8;
-        const int semiW = 28;
+            // Thin vertical gold divider
+            g.setColour(juce::Colour(0xffD4A017));
+            g.drawLine(pcX + 1.0f, pcY + 4.0f, pcX + 1.0f, pcY + pcH - 4.0f, 1.5f);
 
-        g.drawText("PITCH", pbX - 2,  pbY + pbH + 2, pbW + 4, 10, juce::Justification::centred);
-        g.drawText("MOD",   mwX - 2,  pbY + pbH + 2, pbW + 4, 10, juce::Justification::centred);
-        g.drawText("OCT",   octX,     pbY + pbH + 2, octBtnW,  10, juce::Justification::centred);
-        g.drawText("SEMI",  semiX,    pbY + pbH + 2, semiW,    10, juce::Justification::centred);
+            // Static labels (PITCH / MOD / OCT / SEMI) — keep these drawn labels
+            g.setColour(juce::Colour(0xff888888));
+            g.setFont(juce::FontOptions(7.5f).withStyle("Bold"));
+
+            const int controlsOffsetX = 37;
+            const int pbX  = pcX + controlsOffsetX;
+            const int pbY  = pcY + 14;
+            const int pbW  = 22;
+            const int pbH  = 72;
+            const int mwX  = pbX + pbW + 7;
+            const int octX = mwX + pbW + 10;
+            const int octBtnW = 28;
+            const int semiX = octX + octBtnW + 8;
+            const int semiW = 28;
+
+            g.drawText("PITCH", pbX - 2,  pbY + pbH + 2, pbW + 4, 10, juce::Justification::centred);
+            g.drawText("MOD",   mwX - 2,  pbY + pbH + 2, pbW + 4, 10, juce::Justification::centred);
+            g.drawText("OCT",   octX,     pbY + pbH + 2, octBtnW,  10, juce::Justification::centred);
+            g.drawText("SEMI",  semiX,    pbY + pbH + 2, semiW,    10, juce::Justification::centred);
+        }
     }
 
     g.setColour(juce::Colours::black);
@@ -3639,8 +3646,6 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
             const int labelY    = envDisplayY + envDisplayH + 16;
             const int modeBtnW  = 50;
             const int modeBtnGap = 4;
-            const int groupGap  = 18;
-
             // "TRIGGER" label above group 1
             g.setColour(juce::Colour(0xff666666));
             g.setFont(juce::FontOptions(7.5f).withStyle("Bold"));
@@ -3702,20 +3707,23 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRect(4, 634, 1392, 61);
 
     // Redraw border on top of gold bar - full dimensions to edges
-    g.setColour(juce::Colour(0xffD4A017));
-    g.drawRect(1200.0f, 700.0f, 200.0f, 100.0f, 1.5f);
+    if (globalShowKeyboard)
+    {
+        g.setColour(juce::Colour(0xffD4A017));
+        g.drawRect(1200.0f, 700.0f, 200.0f, 100.0f, 1.5f);
+    }
 
     if (currentPage == 0)
     {
-        // ARP/SEQ Section Label (left side of black strip)
+        // ARP Section Label (left side of black strip)
         g.setColour(juce::Colour(0xffD4A017));
         g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
-        g.drawText("ARP / SEQ", 15, 638, 100, 16, juce::Justification::centredLeft);
+        g.drawText("ARP", 15, 638, 100, 16, juce::Justification::centredLeft);
 
         // MOD Section Label (center of black strip)
         g.setColour(juce::Colour(0xffD4A017));
         g.setFont(juce::FontOptions(11.0f).withStyle("Bold"));
-        g.drawText("MOD", 600, 638, 60, 16, juce::Justification::centredLeft);
+        g.drawText("MOD", 895, 638, 60, 16, juce::Justification::centredLeft);
 
         // VOICING banner
         const int voicingPanelX = 1188;
@@ -3739,17 +3747,17 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
     {
         // Dark panel background
         g.setColour(juce::Colour(0xff1e1e1e));
-        g.fillRoundedRectangle(20.0f, 85.0f, 1360.0f, 555.0f, 6.0f);
+        g.fillRoundedRectangle(20.0f, 85.0f, 1360.0f, 545.0f, 6.0f);
 
         // Gold border
         g.setColour(juce::Colour(0xffD4A017));
-        g.drawRoundedRectangle(20.0f, 85.0f, 1360.0f, 555.0f, 6.0f, 1.5f);
+        g.drawRoundedRectangle(20.0f, 85.0f, 1360.0f, 545.0f, 6.0f, 1.5f);
 
         // Centered placeholder text
         g.setColour(juce::Colour(0xffD4A017).withAlpha(0.5f));
         g.setFont(juce::Font(juce::FontOptions(22.0f).withStyle("Italic")));
         g.drawText("coming soon to a plug-in near you",
-                   20, 85, 1360, 555,
+                   20, 85, 1360, 545,
                    juce::Justification::centred, true);
     }
 
@@ -3763,7 +3771,6 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         auto bgDark    = juce::Colour(0xff141414);
         auto bgRowA    = juce::Colour(0xff1e1e1e);
         auto bgRowB    = juce::Colour(0xff252525);
-        auto colText   = juce::Colour(0xffcccccc);
         auto colHdr    = juce::Colour(0xff888888);
         auto fntHeader = juce::Font(juce::FontOptions(9.5f).withStyle("Bold"));
         auto fntLabel  = juce::Font(juce::FontOptions(9.0f));
@@ -3771,7 +3778,7 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         // Matrix table area — starts below the tab bar
         const int mX  = 30;
         const int mY  = 60;
-        const int mW  = getWidth() - 60;
+        const int mW  = 1400 - 60;
         const int mH  = 16 * 30 + 30; // header (30) + 16 rows × 30px
 
         // Outer border
@@ -3846,7 +3853,7 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         const int cLeft = 14;
         const int pad   = 10;
         const int rowH  = 26;
-        const int mid   = (cLeft + getWidth() - 14) / 2;
+        const int mid   = (cLeft + 1400 - 14) / 2;
 
         auto gold     = juce::Colour(0xffD4A017);
         auto goldDim  = juce::Colour(0xff64470A);
@@ -3919,7 +3926,7 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         drawRow(y,  "Mod Wheel",  false, lBox); y+=rowH;
 
         // Right box
-        juce::Rectangle<int> rBox(mid+pad, cTop+pad, getWidth()-14-mid-pad, cBot-cTop-pad*2);
+        juce::Rectangle<int> rBox(mid+pad, cTop+pad, 1400-14-mid-pad, cBot-cTop-pad*2);
         drawBox(rBox, "SETTINGS");
         int ry = rBox.getY() + 22;
         drawSect(ry, "DISPLAY",      rBox); ry+=18;
@@ -3946,6 +3953,10 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
 }
 void ARKAudioProcessorEditor::resized()
 {
+    const float scale = (float)getWidth() / 1400.0f;
+    contentComponent.setTransform(juce::AffineTransform::scale(scale));
+    contentComponent.setBounds(0, 0, 1400, juce::roundToInt((float)getHeight() / scale));
+
     // Page navigation tab buttons
     oscTabBtn.setBounds(200, 10, 80, 30);
     fxTabBtn.setBounds(290, 10, 80, 30);
@@ -3964,8 +3975,6 @@ void ARKAudioProcessorEditor::resized()
     const int envDisplayH = 145;
     const int lfoDisplayX = 781;
     const int lfoDisplayW = 270;
-    const int lfoDisplayH = 145;
-    
     // ENV 3 dropdown - positioned below the envelope display
     int env3DropdownY = envDisplayY + envDisplayH + 8;
     env3DestinationLabel.setBounds (envDisplayX + 5, env3DropdownY, 50, 16);
@@ -4290,36 +4299,35 @@ void ARKAudioProcessorEditor::resized()
     voiceStealLabel.setBounds(row2StartX + (fullKnobSize + knobGap) * 2, voiceKnobY + fullKnobSize + 2, fullKnobSize, 12);
     
     // =========================================================================
-    // ARP/SEQ Section (left side of black strip, y=634, height=61)
+    // ARP Section (left side of black strip, y=634, height=61)
     // =========================================================================
     const int arpX = 15;
     const int arpY = 644;  // Centered in black strip (moved down from 640)
     const int arpKnobSize = 38;  // Increased from 32
     const int arpBtnW = 40;  // Slightly smaller for better fit
     const int arpBtnH = 16;
-    
+
     // ON/OFF button
-    arpOnOffBtn.setBounds(arpX + 100, arpY, 35, 20);
-    
-    // Mode buttons (ARP / SEQ) - stacked vertically
-    arpModeBtn.setBounds(arpX + 140, arpY, 35, 18);
-    seqModeBtn.setBounds(arpX + 140, arpY + 20, 35, 18);
-    
+    arpOnOffBtn.setBounds(arpX + 70, arpY, 35, 20);
+
+    // ARP mode button
+    arpModeBtn.setBounds(arpX + 110, arpY, 35, 18);
+
     // Knobs: RATE, GATE, SWING, OCTAVE - tighter spacing
-    arpRateKnob.setBounds(arpX + 185, arpY - 4, arpKnobSize, arpKnobSize);
-    arpRateLabel.setBounds(arpX + 185, arpY + arpKnobSize - 4, arpKnobSize, 10);
-    
-    arpGateKnob.setBounds(arpX + 230, arpY - 4, arpKnobSize, arpKnobSize);
-    arpGateLabel.setBounds(arpX + 230, arpY + arpKnobSize - 4, arpKnobSize, 10);
-    
-    arpSwingKnob.setBounds(arpX + 275, arpY - 4, arpKnobSize, arpKnobSize);
-    arpSwingLabel.setBounds(arpX + 275, arpY + arpKnobSize - 4, arpKnobSize, 10);
-    
-    arpOctaveKnob.setBounds(arpX + 320, arpY - 4, arpKnobSize, arpKnobSize);
-    arpOctaveLabel.setBounds(arpX + 320, arpY + arpKnobSize - 4, arpKnobSize, 10);
-    
+    arpRateKnob.setBounds(arpX + 155, arpY - 4, arpKnobSize, arpKnobSize);
+    arpRateLabel.setBounds(arpX + 155, arpY + arpKnobSize - 4, arpKnobSize, 10);
+
+    arpGateKnob.setBounds(arpX + 200, arpY - 4, arpKnobSize, arpKnobSize);
+    arpGateLabel.setBounds(arpX + 200, arpY + arpKnobSize - 4, arpKnobSize, 10);
+
+    arpSwingKnob.setBounds(arpX + 245, arpY - 4, arpKnobSize, arpKnobSize);
+    arpSwingLabel.setBounds(arpX + 245, arpY + arpKnobSize - 4, arpKnobSize, 10);
+
+    arpOctaveKnob.setBounds(arpX + 290, arpY - 4, arpKnobSize, arpKnobSize);
+    arpOctaveLabel.setBounds(arpX + 290, arpY + arpKnobSize - 4, arpKnobSize, 10);
+
     // Pattern buttons (UP, DN, U-D, RND, ORD) - tighter spacing
-    const int patternBtnX = arpX + 370;
+    const int patternBtnX = arpX + 340;
     arpUpBtn.setBounds(patternBtnX, arpY, arpBtnW, arpBtnH);
     arpDownBtn.setBounds(patternBtnX + arpBtnW + 2, arpY, arpBtnW, arpBtnH);
     arpUpDownBtn.setBounds(patternBtnX + (arpBtnW + 2) * 2, arpY, arpBtnW, arpBtnH);
@@ -4332,7 +4340,7 @@ void ARKAudioProcessorEditor::resized()
     // =========================================================================
     // MOD Section (center of black strip) - horizontal layout
     // =========================================================================
-    const int modX = 600;
+    const int modX = 895;
     const int modY = 644;  // Aligned with ARP section
     const int modKnobSize = 38;
     const int modKnobSpacing = 45;
@@ -4414,7 +4422,6 @@ void ARKAudioProcessorEditor::resized()
     const int modeBtnW     = 50;
     const int modeBtnH     = 20;
     const int modeBtnGap   = 4;
-    const int groupGap     = 18;  // extra gap between the two groups
 
     // Group 1 ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Trigger mode
     envTrigBtn.setBounds(lfoModeBtnX,                                lfoModeBtnY, modeBtnW, modeBtnH);
@@ -4539,7 +4546,7 @@ void ARKAudioProcessorEditor::resized()
         // Must match paint() column constants exactly
         const int mX   = 30;
         const int mY   = 60;
-        const int mW   = getWidth() - 60;
+        const int mW   = 1400 - 60;
 
         const int cSrc = mX + 30;
         const int cDst = cSrc + 220;
@@ -4576,7 +4583,7 @@ void ARKAudioProcessorEditor::resized()
         const int rowH  = 26;
         const int wH    = 22;
         const int wW    = 160;
-        const int mid   = (cLeft + getWidth() - 14) / 2;
+        const int mid   = (cLeft + 1400 - 14) / 2;
 
         // Left box widgets — right-aligned inside left box
         const int lwX = mid - pad - 1 - wW - 6;
@@ -4600,7 +4607,7 @@ void ARKAudioProcessorEditor::resized()
         globalModWheelDestBox    .setBounds(lwX, y+3, wW, wH); y+=rowH;
 
         // Right box widgets — right-aligned inside right box
-        const int rwX = getWidth() - 14 - pad - 1 - wW - 6;
+        const int rwX = 1400 - 14 - pad - 1 - wW - 6;
 
         int ry = cTop + pad + 22;
         ry+=18; // DISPLAY header

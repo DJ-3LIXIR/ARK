@@ -320,7 +320,7 @@ private:
     float calculateNoteTracking (int midiNote, float curveParam) const;
 
     // -------------------------------------------------------------------------
-    // ARP/SEQ Engine State
+    // ARP Engine State
     // -------------------------------------------------------------------------
     int   arpHeldNotes[128];
     int   arpHeldNoteCount = 0;
@@ -333,6 +333,7 @@ private:
     bool  arpNoteIsOn  = false;
     bool  arpGoingUp   = true;
     float arpLastVelocity = 0.8f;
+    int   arpLatchPrev = 0;
     juce::Random arpRandom;
 
     void arpPushNote (int midiNote);

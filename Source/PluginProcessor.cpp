@@ -53,9 +53,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID {"oscAOctave", 1},
         "OSC A Octave",
-        juce::NormalisableRange<float>(-3.0f, 3.0f, 1.0f),
+        juce::NormalisableRange<float>(-5.0f, 5.0f, 1.0f),
         0.0f));
-    
+
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID {"oscASemitone", 1},
         "OSC A Semitone",
@@ -128,9 +128,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID {"oscBOctave", 1},
         "OSC B Octave",
-        juce::NormalisableRange<float>(-3.0f, 3.0f, 1.0f),
+        juce::NormalisableRange<float>(-5.0f, 5.0f, 1.0f),
         0.0f));
-    
+
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID {"oscBSemitone", 1},
         "OSC B Semitone",
@@ -250,7 +250,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID {"subOctave", 1},
         "Sub Octave",
-        juce::NormalisableRange<float>(-3.0f, 0.0f, 1.0f),
+        juce::NormalisableRange<float>(-5.0f, 5.0f, 1.0f),
         -1.0f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
@@ -621,7 +621,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
         0, 4, 0));
 
     // =========================================================================
-    // ARP/SEQ Parameters
+    // ARP Parameters
     // =========================================================================
 
     // ARP On/Off: 0=OFF, 1=ON
@@ -630,7 +630,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
         "ARP On/Off",
         0, 1, 0));
 
-    // ARP Mode: 0=ARP, 1=SEQ
+    // ARP Mode (reserved)
     layout.add(std::make_unique<juce::AudioParameterInt>(
         juce::ParameterID{"arpMode", 1},
         "ARP Mode",
@@ -1129,7 +1129,7 @@ float ARKAudioProcessor::calculateNoteTracking(int midiNote, float curveParam) c
 // ============================================================================
 
 // ============================================================================
-// ARP/SEQ Helper Functions
+// ARP Helper Functions
 // ============================================================================
 
 void ARKAudioProcessor::arpPushNote(int midiNote)
@@ -1519,7 +1519,7 @@ void ARKAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     heldNoteCount = 0;
     voiceCounter = 0;
 
-    // Reset ARP/SEQ state
+    // Reset ARP state
     arpReset();
 
     // Prepare the Moog ladder filters
@@ -1622,16 +1622,21 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     float portaSamples = (portaMs / 1000.0f) * (float)currentSampleRate;
     float portaIncrement = (portaSamples > 0.0f) ? (1.0f / portaSamples) : 1.0f;
 
-    // Read ARP/SEQ parameters once per block
+    // Read ARP parameters once per block
     int  arpEnabled  = (int)apvts.getRawParameterValue("arpOnOff")->load();
     int  arpMode     = (int)apvts.getRawParameterValue("arpMode")->load();
-    juce::ignoreUnused (arpMode); // parameter reserved for future SEQ/ARP mode switching
+    juce::ignoreUnused (arpMode);
     float arpRate    = apvts.getRawParameterValue("arpRate")->load();
     float arpGate    = apvts.getRawParameterValue("arpGate")->load();
     float arpSwingAmt = apvts.getRawParameterValue("arpSwing")->load();
     int  arpOctave   = (int)apvts.getRawParameterValue("arpOctave")->load();
     int  arpPattern  = (int)apvts.getRawParameterValue("arpPattern")->load();
     int  arpLatch    = (int)apvts.getRawParameterValue("arpLatch")->load();
+
+    // When latch is toggled OFF, clear all held notes so the arp stops
+    if (arpLatchPrev == 1 && arpLatch == 0)
+        arpReset();
+    arpLatchPrev = arpLatch;
 
     // Calculate ARP step duration from host tempo
     double bpm = 120.0;
@@ -1660,7 +1665,7 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         {
             // JUCE pitch wheel: -8192 to +8191, normalize to -1.0 to +1.0
             currentPitchBend = juce::jlimit(-1.0f, 1.0f,
-                (float)message.getPitchWheelValue() / 8192.0f);
+                ((float)message.getPitchWheelValue() - 8192.0f) / 8192.0f);
             continue;
         }
 
@@ -2342,7 +2347,7 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         float sumVel            = 0.0f;
         float sumNote           = 0.0f;
 
-        // ---- ARP/SEQ Per-Sample Stepping ----
+        // ---- ARP Per-Sample Stepping ----
         if (arpEnabled && arpSequenceLength > 0)
         {
             // Handle gate-off (note release within step)
@@ -3250,8 +3255,8 @@ juce::StringArray ARKAudioProcessor::getPresetFolders() const
 
     // Stock preset pack folders — always present, in this fixed order
     const juce::StringArray stockFolders = {
-        "Ethereal", "Circuit", "Analog Soul",
-        "Dark Matter", "Modular", "Pure"
+        "Basic", "Ethereal", "Circuit", "Analog Soul",
+        "Dark Matter", "Modular", "Pure", "Yamaha DX7 Library"
     };
 
     // Ensure stock folders exist on disk
