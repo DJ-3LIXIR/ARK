@@ -47,6 +47,34 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
         "OSC B Power",
         true)); // Default to ON
 
+    // OSC A String Mode: 0=None, 1=Pluck, 2=Strum, 3=Pizz, 4=Arco
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID {"oscAStringMode", 1},
+        "OSC A String Mode",
+        juce::StringArray("None", "Pluck", "Strum", "Pizz", "Arco"),
+        0));  // Default: None
+
+    // OSC B String Mode: 0=None, 1=Pluck, 2=Strum, 3=Pizz, 4=Arco
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID {"oscBStringMode", 1},
+        "OSC B String Mode",
+        juce::StringArray("None", "Pluck", "Strum", "Pizz", "Arco"),
+        0));  // Default: None
+
+    // OSC A Choir Mode: 0=None, 1=OOH, 2=AAH, 3=Women, 4=Men
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID {"oscAChoirMode", 1},
+        "OSC A Choir Mode",
+        juce::StringArray("None", "OOH", "AAH", "Women", "Men"),
+        0));  // Default: None
+
+    // OSC B Choir Mode: 0=None, 1=OOH, 2=AAH, 3=Women, 4=Men
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID {"oscBChoirMode", 1},
+        "OSC B Choir Mode",
+        juce::StringArray("None", "OOH", "AAH", "Women", "Men"),
+        0));  // Default: None
+
     // -------------------------------------------------------------------------
     // OSC A Knob Parameters
     // -------------------------------------------------------------------------
@@ -701,6 +729,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout ARKAudioProcessor::createPar
         juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
         0.0f));
 
+    // FM Filter: OSC B modulates filter cutoff, 0-100
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID{"modFmFilter", 1},
+        "Mod FM Filter",
+        juce::NormalisableRange<float>(0.0f, 100.0f, 0.1f),
+        0.0f));
+
     // Tighten: 0-10
     layout.add(std::make_unique<juce::AudioParameterFloat>(
         juce::ParameterID{"modTighten", 1},
@@ -792,9 +827,6 @@ ARKAudioProcessor::ARKAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
      : AudioProcessor (BusesProperties()
                      #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
                        .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
                      #endif // ! JucePlugin_IsMidiEffect
                        ),
@@ -803,11 +835,113 @@ ARKAudioProcessor::ARKAudioProcessor()
 #endif
        apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
+    choirFormatManager.registerBasicFormats();
+    loadChoirSamples();
     refreshOscPresetList();
 }
 
 ARKAudioProcessor::~ARKAudioProcessor()
 {
+}
+
+//==============================================================================
+// Loads the four choir sample WAVs from <project>/Samples/Choir/
+// Falls back gracefully — if a file is missing, that mode produces silence.
+void ARKAudioProcessor::loadChoirSamples()
+{
+    juce::File samplesDir;
+
+    // Write a debug log to Desktop so we can see what paths the plugin resolves
+    juce::File debugLog = juce::File::getSpecialLocation(juce::File::userDesktopDirectory)
+                              .getChildFile("ARK_choir_debug.txt");
+    juce::String debugText;
+
+    juce::File execFile = juce::File::getSpecialLocation(
+                              juce::File::currentExecutableFile);
+    debugText += "execFile: " + execFile.getFullPathName() + "\n";
+
+    juce::File appFile = juce::File::getSpecialLocation(
+                             juce::File::currentApplicationFile);
+    debugText += "appFile: " + appFile.getFullPathName() + "\n";
+
+    // Walk up from <bundle>/Contents/MacOS/ARK to <bundle>
+    juce::File bundleDir = execFile.getParentDirectory()   // MacOS/
+                                   .getParentDirectory()   // Contents/
+                                   .getParentDirectory();  // <bundle>.component or .vst3
+    debugText += "bundleDir: " + bundleDir.getFullPathName() + "\n";
+
+    juce::File bundleResources = bundleDir.getChildFile("Contents/Resources/Samples/Choir");
+    debugText += "bundleResources: " + bundleResources.getFullPathName() + "\n";
+    debugText += "bundleResources isDir: " + juce::String(bundleResources.isDirectory() ? "YES" : "NO") + "\n";
+
+    if (bundleResources.isDirectory())
+    {
+        samplesDir = bundleResources;
+    }
+    else
+    {
+        // Fallback: walk up from the binary to find <project>/Samples/Choir
+        juce::File searchDir = execFile.getParentDirectory();
+        for (int i = 0; i < 8; ++i)
+        {
+            juce::File candidate = searchDir.getChildFile("Samples/Choir");
+            debugText += "fallback[" + juce::String(i) + "]: " + candidate.getFullPathName()
+                         + " isDir=" + juce::String(candidate.isDirectory() ? "YES" : "NO") + "\n";
+            if (candidate.isDirectory())
+            {
+                samplesDir = candidate;
+                break;
+            }
+            searchDir = searchDir.getParentDirectory();
+        }
+    }
+
+    debugText += "FINAL samplesDir: " + samplesDir.getFullPathName() + "\n";
+    debugText += "FINAL isDir: " + juce::String(samplesDir.isDirectory() ? "YES" : "NO") + "\n";
+    debugLog.replaceWithText(debugText);
+
+    if (!samplesDir.isDirectory())
+        return;  // Samples folder not found — all modes will be silent
+
+    const char* fileNames[numChoirSamples] = {
+        "choir_ooh.wav",
+        "choir_aah.wav",
+        "choir_women.wav",
+        "choir_men.wav"
+    };
+
+    for (int i = 0; i < numChoirSamples; ++i)
+    {
+        juce::File f = samplesDir.getChildFile(fileNames[i]);
+        debugText += "File[" + juce::String(i) + "]: " + f.getFullPathName()
+                     + " exists=" + juce::String(f.existsAsFile() ? "YES" : "NO") + "\n";
+        if (!f.existsAsFile()) continue;
+
+        std::unique_ptr<juce::AudioFormatReader> reader(
+            choirFormatManager.createReaderFor(f));
+        debugText += "  reader=" + juce::String(reader != nullptr ? "OK" : "NULL") + "\n";
+        if (reader == nullptr) continue;
+
+        int numCh      = (int)reader->numChannels;
+        int numSamples = (int)reader->lengthInSamples;
+        debugText += "  channels=" + juce::String(numCh) + " samples=" + juce::String(numSamples)
+                     + " sampleRate=" + juce::String(reader->sampleRate) + "\n";
+
+        // Clamp to stereo
+        int loadCh = juce::jmin(numCh, 2);
+        choirSampleBuffers[i].setSize(loadCh, numSamples);
+        reader->read(&choirSampleBuffers[i], 0, numSamples, 0, true, loadCh > 1);
+
+        choirSamplesLoaded[i] = true;
+        debugText += "  LOADED OK, buffer size=" + juce::String(choirSampleBuffers[i].getNumSamples()) + "\n";
+    }
+
+    // Count how many loaded
+    int loadedCount = 0;
+    for (int i = 0; i < numChoirSamples; ++i)
+        if (choirSamplesLoaded[i]) loadedCount++;
+    debugText += "Total loaded: " + juce::String(loadedCount) + "/" + juce::String(numChoirSamples) + "\n";
+    debugLog.replaceWithText(debugText);
 }
 
 //==============================================================================
@@ -913,26 +1047,180 @@ float ARKAudioProcessor::getNextSampleForVoice (Voice& voice, int wavetableIndex
     return value * voice.level * levelMultiplier;
 }
 
-// Find an inactive voice to use
-Voice* ARKAudioProcessor::findFreeVoice()
+//==============================================================================
+// String Synthesis using Harmonic Decay with Physics-Based Damping
+// Uses per-oscillator StringState so OSC A and OSC B are fully independent.
+//==============================================================================
+float ARKAudioProcessor::getNextSampleForString(Voice::StringState& ss,
+                                                float voiceLevel,
+                                                float frequency,
+                                                int stringMode,
+                                                int numHarmonics) noexcept
 {
-    for (int i = 0; i < maxVoices; ++i)
+    // -------------------------------------------------------------------------
+    // Initialize on new note (mode changed or energy depleted)
+    // -------------------------------------------------------------------------
+    if (ss.stringMode != (unsigned int)stringMode || ss.excitationEnergy < 1e-6f)
     {
-        if (!voices[i].isActive)
-            return &voices[i];
+        ss.stringMode = (unsigned int)stringMode;
+
+        for (int h = 0; h < numHarmonics; ++h)
+        {
+            ss.harmonicAmplitude[h] = 1.0f / (float)(h + 1);
+            ss.harmonicPhase[h] = 0.0f;
+        }
+
+        ss.excitationEnergy = 1.0f;
+
+        // Per-mode damping and strike position
+        switch (stringMode)
+        {
+            case 1:  ss.stringDamping = 0.999969f; ss.strikePosition = 0.13f; break; // Pluck ~5s
+            case 2:  ss.stringDamping = 0.999969f; ss.strikePosition = 0.15f; break; // Strum ~5s
+            case 3:  ss.stringDamping = 0.999895f; ss.strikePosition = 0.20f; break; // Pizz ~1.5s
+            case 4:  ss.stringDamping = 0.999999f; ss.strikePosition = 0.10f; break; // Arco
+            default: ss.stringDamping = 0.999969f; ss.strikePosition = 0.15f; break;
+        }
+
+        // Precompute per-harmonic decay rates (avoids std::pow every sample)
+        for (int h = 0; h < numHarmonics; ++h)
+        {
+            float qFactor = 1.0f + (float)h * 0.08f;
+            ss.harmonicDecayRate[h] = std::pow(ss.stringDamping, qFactor);
+        }
     }
-    return nullptr; // No free voices
+
+    if (frequency < 20.0f)   frequency = 20.0f;
+    if (frequency > 18000.0f) frequency = 18000.0f;
+
+    const float twoPi = juce::MathConstants<float>::twoPi;
+    const float pi    = juce::MathConstants<float>::pi;
+    const float sr    = (float)getSampleRate();
+
+    // -------------------------------------------------------------------------
+    // Accumulate harmonics
+    // -------------------------------------------------------------------------
+    float output = 0.0f;
+
+    for (int h = 0; h < numHarmonics; ++h)
+    {
+        float harmonicFreq = frequency * (float)(h + 1);
+
+        if (harmonicFreq > sr * 0.5f)
+            break;
+
+        float phaseInc = (harmonicFreq / sr) * twoPi;
+        ss.harmonicPhase[h] += phaseInc;
+        if (ss.harmonicPhase[h] >= twoPi)
+            ss.harmonicPhase[h] -= twoPi;
+
+        float strikeFactor = std::abs(std::sin(pi * (float)(h + 1) * ss.strikePosition));
+        float sample = std::sin(ss.harmonicPhase[h]);
+        output += ss.harmonicAmplitude[h] * strikeFactor * sample;
+    }
+
+    output *= 0.25f;
+    output *= ss.excitationEnergy;
+
+    // -------------------------------------------------------------------------
+    // Decay (skip for Arco — bow sustains indefinitely)
+    // -------------------------------------------------------------------------
+    if (stringMode != 4)
+    {
+        ss.excitationEnergy *= ss.stringDamping;
+
+        for (int h = 0; h < numHarmonics; ++h)
+            ss.harmonicAmplitude[h] *= ss.harmonicDecayRate[h];
+    }
+
+    output *= voiceLevel;
+    return output;
 }
 
-// Find the voice playing a specific MIDI note
-Voice* ARKAudioProcessor::findVoicePlayingNote(int midiNote)
+//==============================================================================
+// Choir Synthesis — LF Glottal Source + Formant Resonator Bank
+//==============================================================================
+// Sample-based choir engine.
+// Loads the correct buffer for the requested mode, calculates a pitch ratio
+// from the voice frequency vs the sample root (D3 = 174.614 Hz), and
+// advances a fractional read position with linear interpolation.
+// Loops the sustain region (20%–80% of the buffer) for held notes.
+//==============================================================================
+float ARKAudioProcessor::getNextSampleForChoir(Voice::ChoirSamplerState& cs,
+                                                float voiceLevel,
+                                                float frequency,
+                                                int choirMode) noexcept
 {
-    for (int i = 0; i < maxVoices; ++i)
+    if (choirMode <= 0 || choirMode > 4) return 0.0f;
+
+    const int bufIndex = choirMode - 1;  // 0=OOH, 1=AAH, 2=Women, 3=Men
+
+    if (!choirSamplesLoaded[bufIndex]) return 0.0f;
+
+    const juce::AudioBuffer<float>& buf = choirSampleBuffers[bufIndex];
+    const int   totalSamples = buf.getNumSamples();
+    const int   numCh        = buf.getNumChannels();
+    if (totalSamples < 2) return 0.0f;
+
+    // Reset read position when mode changes or voice restarts
+    if (cs.choirMode != choirMode || !cs.isPlaying)
     {
-        if (voices[i].isActive && voices[i].midiNote == midiNote)
-            return &voices[i];
+        cs.choirMode  = choirMode;
+        cs.readPos    = 0.0;
+        cs.isPlaying  = true;
     }
-    return nullptr;
+
+    // Pitch ratio: how fast to advance through the buffer
+    // root is D3 = 174.614 Hz; also account for sample rate difference
+    const double rootHz       = choirSampleRoots[bufIndex];  // 174.614 Hz
+    const double bufferSR     = (bufIndex == 0 || bufIndex == 1) ? 96000.0
+                              : (bufIndex == 2)                   ? 44100.0
+                                                                  : 48000.0;
+    const double pitchRatio   = (frequency / rootHz) * (bufferSR / currentSampleRate);
+
+    // Sustain loop region (use middle 60% of the buffer)
+    const int loopStart = (int)(totalSamples * 0.20);
+    const int loopEnd   = (int)(totalSamples * 0.80);
+
+    // Advance position, looping in sustain zone once we reach it
+    cs.readPos += pitchRatio;
+
+    if (cs.readPos >= loopEnd)
+        cs.readPos = loopStart + std::fmod(cs.readPos - loopStart,
+                                           (double)(loopEnd - loopStart));
+
+    if (cs.readPos >= totalSamples)
+        cs.readPos = loopStart;
+
+    // Linear interpolation
+    int   i0   = (int)cs.readPos;
+    int   i1   = i0 + 1;
+    float frac = (float)(cs.readPos - i0);
+
+    i0 = juce::jlimit(0, totalSamples - 1, i0);
+    i1 = juce::jlimit(0, totalSamples - 1, i1);
+
+    // Mix channels to mono (most buffers are stereo)
+    float s0 = 0.0f, s1 = 0.0f;
+    for (int c = 0; c < numCh; ++c)
+    {
+        s0 += buf.getSample(c, i0);
+        s1 += buf.getSample(c, i1);
+    }
+    if (numCh > 1) { s0 *= 0.5f; s1 *= 0.5f; }
+
+    float output = s0 + frac * (s1 - s0);
+
+    // Per-mode gain compensation — Women sample is very hot, Men is quiet
+    static const float modeGain[4] = { 1.0f,   // OOH
+                                       1.0f,   // AAH
+                                       0.35f,  // Women  (turn down)
+                                       4.5f }; // Men    (turn up)
+    output *= modeGain[bufIndex];
+
+    output *= voiceLevel;
+
+    return output;
 }
 
 // ============================================================================
@@ -1265,6 +1553,16 @@ void ARKAudioProcessor::arpNoteOn(int midiNote, float velocity)
     voice->env3Stage = Voice::EnvStage::Attack;
     voice->env3Level = 0.0f;
 
+    // Reset string synthesis state for new note (both oscillators)
+    voice->stringA.excitationEnergy = 0.0f;
+    voice->stringA.stringMode = 0;
+    voice->stringB.excitationEnergy = 0.0f;
+    voice->stringB.stringMode = 0;
+
+    // Reset choir synthesis state for new note (both oscillators)
+        voice->choirA.reset();
+        voice->choirB.reset();
+    
     // Reset LFOs (check trigger mode)
     for (int l = 0; l < 4; ++l)
     {
@@ -1522,6 +1820,9 @@ void ARKAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     // Reset ARP state
     arpReset();
 
+    // Reset FM filter accumulator
+    oscBFmAccum = 0.0f;
+
     // Prepare the Moog ladder filters
     filterLeft.prepare  (sampleRate);
     filterRight.prepare (sampleRate);
@@ -1538,14 +1839,13 @@ bool ARKAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) cons
     juce::ignoreUnused (layouts);
     return true;
   #else
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    const auto mainOut = layouts.getMainOutputChannelSet();
+    if (mainOut != juce::AudioChannelSet::stereo())
         return false;
 
-   #if ! JucePlugin_IsSynth
-    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
+    const auto mainIn = layouts.getMainInputChannelSet();
+    if (! mainIn.isDisabled() && mainIn != mainOut)
         return false;
-   #endif
 
     return true;
   #endif
@@ -1794,6 +2094,16 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                     voice->env3Stage = Voice::EnvStage::Attack;
                     voice->env3Level = 0.0f;
 
+                    // Reset string synthesis state for new note (both oscillators)
+                    voice->stringA.excitationEnergy = 0.0f;
+                    voice->stringA.stringMode = 0;
+                    voice->stringB.excitationEnergy = 0.0f;
+                    voice->stringB.stringMode = 0;
+
+                    // Reset choir synthesis state for new note (both oscillators)
+                    voice->choirA.reset();
+                    voice->choirB.reset();
+
                     // Reset LFOs based on trigger mode
                     for (int lfo = 0; lfo < 4; ++lfo)
                     {
@@ -1858,6 +2168,16 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                     voice->filterEnvLevel = 0.0f;
                     voice->env3Stage = Voice::EnvStage::Attack;
                     voice->env3Level = 0.0f;
+
+                    // Reset string synthesis state for new note (both oscillators)
+                    voice->stringA.excitationEnergy = 0.0f;
+                    voice->stringA.stringMode = 0;
+                    voice->stringB.excitationEnergy = 0.0f;
+                    voice->stringB.stringMode = 0;
+
+                    // Reset choir synthesis state for new note (both oscillators)
+                    voice->choirA.reset();
+                    voice->choirB.reset();
 
                     // LFO reset
                     for (int lfo = 0; lfo < 4; ++lfo)
@@ -1967,6 +2287,10 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     // Read waveform choices and power from APVTS
     auto* oscAParam = apvts.getRawParameterValue ("oscAWave");
     auto* oscBParam = apvts.getRawParameterValue ("oscBWave");
+    auto* oscAStringModeParam = apvts.getRawParameterValue ("oscAStringMode");
+    auto* oscBStringModeParam = apvts.getRawParameterValue ("oscBStringMode");
+    auto* oscAChoirModeParam  = apvts.getRawParameterValue ("oscAChoirMode");
+    auto* oscBChoirModeParam  = apvts.getRawParameterValue ("oscBChoirMode");
     auto* oscAPowerParam = apvts.getRawParameterValue ("oscAPower");
     auto* oscBPowerParam = apvts.getRawParameterValue ("oscBPower");
     
@@ -2000,6 +2324,8 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     
     // Safety check
     if (oscAParam == nullptr || oscBParam == nullptr ||
+        oscAStringModeParam == nullptr || oscBStringModeParam == nullptr ||
+        oscAChoirModeParam == nullptr || oscBChoirModeParam == nullptr ||
         oscAPowerParam == nullptr || oscBPowerParam == nullptr ||
         oscAOctaveParam == nullptr || oscASemitoneParam == nullptr || oscAFineParam == nullptr ||
         oscAUnisonParam == nullptr || oscADetuneParam == nullptr || oscABlendParam == nullptr ||
@@ -2013,6 +2339,10 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     
     int oscAWave = (int) oscAParam->load();
     int oscBWave = (int) oscBParam->load();
+    int oscAStringMode = (int) oscAStringModeParam->load();  // 0=None, 1=Pluck, 2=Strum, 3=Pizz, 4=Arco
+    int oscBStringMode = (int) oscBStringModeParam->load();  // 0=None, 1=Pluck, 2=Strum, 3=Pizz, 4=Arco
+    int oscAChoirMode  = (int) oscAChoirModeParam->load();   // 0=None, 1=OOH, 2=AAH, 3=Women, 4=Men
+    int oscBChoirMode  = (int) oscBChoirModeParam->load();   // 0=None, 1=OOH, 2=AAH, 3=Women, 4=Men
     bool oscAPowerOn = oscAPowerParam->load() > 0.5f;
     bool oscBPowerOn = oscBPowerParam->load() > 0.5f;
     
@@ -2236,6 +2566,7 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const float modFattness = apvts.getRawParameterValue("modFattness")->load();  // 0–10
     const float modHpFilter = apvts.getRawParameterValue("modHpFilter")->load();  // 0–10
     const float modFm       = apvts.getRawParameterValue("modFm")->load();        // 0–100
+    const float modFmFilter = apvts.getRawParameterValue("modFmFilter")->load();  // 0–100
     const float modTighten  = apvts.getRawParameterValue("modTighten")->load();   // 0–10
     const float modHuman    = apvts.getRawParameterValue("modHuman")->load();     // 0–10
 
@@ -2601,10 +2932,30 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                             fmMod = std::sin(voices[v].currentIndex / (float)wavetableSize
                                              * juce::MathConstants<float>::twoPi) * (modFm / 100.0f) * 12.0f;
 
-                        float unisonSample = getNextSampleForVoice(voices[v], oscAWave,
-                                                                    oscAOctave, oscASemitone + voicePitchMod + globalPitchOffset + fmMod,
-                                                                    oscAFine + detuneOffset,
-                                                                    oscALevel, oscAPhase, oscAWtPos);
+                        float unisonSample;
+
+                        // Synthesis priority: String > Choir > Wavetable
+                        if (oscAStringMode > 0)
+                        {
+                            float pitchShift = oscAOctave * 12.0f + oscASemitone + voicePitchMod + globalPitchOffset + fmMod;
+                            float stringFrequency = voices[v].currentFrequency * std::pow(2.0f, pitchShift / 12.0f);
+                            unisonSample = getNextSampleForString(voices[v].stringA, voices[v].level, stringFrequency, oscAStringMode, 16);
+                        }
+                        else if (oscAChoirMode > 0)
+                        {
+                            float pitchShift = oscAOctave * 12.0f + oscASemitone + voicePitchMod + globalPitchOffset + fmMod;
+                            float fineCents  = (oscAFine + detuneOffset) / 100.0f;
+                            float choirFrequency = voices[v].currentFrequency * std::pow(2.0f, (pitchShift + fineCents) / 12.0f);
+                            float choirLevel = voices[v].level * (oscALevel / 100.0f);
+                            unisonSample = getNextSampleForChoir(voices[v].choirA, choirLevel, choirFrequency, oscAChoirMode);
+                        }
+                        else
+                        {
+                            unisonSample = getNextSampleForVoice(voices[v], oscAWave,
+                                                                  oscAOctave, oscASemitone + voicePitchMod + globalPitchOffset + fmMod,
+                                                                  oscAFine + detuneOffset,
+                                                                  oscALevel, oscAPhase, oscAWtPos);
+                        }
 
                         sampleALeft  += unisonSample * oscAUnisonVoiceGains[u] * oscAUnisonLeftGains[u];
                         sampleARight += unisonSample * oscAUnisonVoiceGains[u] * oscAUnisonRightGains[u];
@@ -2632,10 +2983,30 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                             detuneOffset += chaosPitch;
                         }
 
-                        float unisonSample = getNextSampleForVoice(voices[v], oscBWave,
-                                                                    oscBOctave, oscBSemitone + voicePitchMod + globalPitchOffset,
-                                                                    oscBFine + detuneOffset,
-                                                                    oscBLevel, oscBPhase, oscBWtPos);
+                        float unisonSample;
+
+                        // Synthesis priority: String > Choir > Wavetable
+                        if (oscBStringMode > 0)
+                        {
+                            float pitchShift = oscBOctave * 12.0f + oscBSemitone + voicePitchMod + globalPitchOffset;
+                            float stringFrequency = voices[v].currentFrequency * std::pow(2.0f, pitchShift / 12.0f);
+                            unisonSample = getNextSampleForString(voices[v].stringB, voices[v].level, stringFrequency, oscBStringMode, 16);
+                        }
+                        else if (oscBChoirMode > 0)
+                        {
+                            float pitchShift = oscBOctave * 12.0f + oscBSemitone + voicePitchMod + globalPitchOffset;
+                            float fineCents  = (oscBFine + detuneOffset) / 100.0f;
+                            float choirFrequency = voices[v].currentFrequency * std::pow(2.0f, (pitchShift + fineCents) / 12.0f);
+                            float choirLevel = voices[v].level * (oscBLevel / 100.0f);
+                            unisonSample = getNextSampleForChoir(voices[v].choirB, choirLevel, choirFrequency, oscBChoirMode);
+                        }
+                        else
+                        {
+                            unisonSample = getNextSampleForVoice(voices[v], oscBWave,
+                                                                  oscBOctave, oscBSemitone + voicePitchMod + globalPitchOffset,
+                                                                  oscBFine + detuneOffset,
+                                                                  oscBLevel, oscBPhase, oscBWtPos);
+                        }
 
                         sampleBLeft  += unisonSample * oscBUnisonVoiceGains[u] * oscBUnisonLeftGains[u];
                         sampleBRight += unisonSample * oscBUnisonVoiceGains[u] * oscBUnisonRightGains[u];
@@ -2820,6 +3191,41 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         envCutoff += noteTrackMix * 8000.0f;
         envCutoff = juce::jlimit (20.0f, 20000.0f, envCutoff);
 
+        // FM Filter: OSC B phase modulates filter cutoff
+        // We use the average note frequency across active voices to keep the
+        // modulator harmonically locked to the played pitch, just like real FM.
+        if (modFmFilter > 0.0f && currentActiveVoices > 0)
+        {
+            // Compute average played frequency across active voices
+            float avgFreq = 0.0f;
+            int activeCount = 0;
+            for (int v = 0; v < maxVoices; ++v)
+            {
+                if (voices[v].isActive)
+                {
+                    avgFreq += voices[v].currentFrequency;
+                    ++activeCount;
+                }
+            }
+            if (activeCount > 0)
+                avgFreq /= (float)activeCount;
+            else
+                avgFreq = 440.0f;
+
+            // Advance the FM filter phase accumulator
+            float fmFilterDelta = juce::MathConstants<float>::twoPi * avgFreq
+                                  / (float)currentSampleRate;
+            oscBFmAccum += fmFilterDelta;
+            if (oscBFmAccum >= juce::MathConstants<float>::twoPi)
+                oscBFmAccum -= juce::MathConstants<float>::twoPi;
+
+            // Modulation depth: at 100% this sweeps ±4000 Hz around the cutoff.
+            // Scaled softly so low amounts feel subtle and musical.
+            float fmDepth = (modFmFilter / 100.0f) * (modFmFilter / 100.0f) * 4000.0f;
+            float fmFilterMod = std::sin(oscBFmAccum) * fmDepth;
+            envCutoff = juce::jlimit(20.0f, 20000.0f, envCutoff + fmFilterMod);
+        }
+
         float env3Mix = sumEnv3 * invActive;
         
         float env3Modulation = env3Mix * env3Amount;
@@ -2996,6 +3402,21 @@ void ARKAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     else
         midiMessages.clear();
 
+    // =========================================================================
+    // FX RACK CHAIN — process audio through active rack plugins
+    // =========================================================================
+    {
+        juce::SpinLock::ScopedLockType lock (fxChainLock);
+        juce::MidiBuffer emptyMidi;
+        const int slots = numFxSlots.load();
+        for (int i = 0; i < slots; ++i)
+        {
+            auto& slot = fxChain[i];
+            if (slot.processor != nullptr && slot.powered && ! slot.muted)
+                slot.processor->processBlock (buffer, emptyMidi);
+        }
+    }
+
 } // end processBlock
 
 //==============================================================================
@@ -3013,16 +3434,68 @@ juce::AudioProcessorEditor* ARKAudioProcessor::createEditor()
 void ARKAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+
+    // Save extra non-APVTS state into the tree
+    state.setProperty("currentFullPresetName",   currentFullPresetName,   nullptr);
+    state.setProperty("currentFullPresetFolder", currentFullPresetFolder, nullptr);
+    state.setProperty("currentOscAPresetName",   currentOscAPresetName,   nullptr);
+    state.setProperty("currentOscBPresetName",   currentOscBPresetName,   nullptr);
+    state.setProperty("currentOscAPresetIndex",  currentOscAPresetIndex,  nullptr);
+    state.setProperty("currentOscBPresetIndex",  currentOscBPresetIndex,  nullptr);
+    state.setProperty("keyboardOctaveOffset",    (int)keyboardOctaveOffset.load(), nullptr);
+    state.setProperty("keyboardSemiOffset",      (int)keyboardSemiOffset.load(),   nullptr);
+
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
+
+    // Capture FX rack state (from live FXPage if editor is open, otherwise from cache)
+    if (fxPage != nullptr)
+    {
+        auto fxStateXml = fxPage->saveFXState();
+        if (fxStateXml != nullptr)
+        {
+            cachedFXState = std::make_unique<juce::XmlElement> (*fxStateXml);
+            xml->addChildElement (fxStateXml.release());
+        }
+    }
+    else if (cachedFXState != nullptr)
+    {
+        xml->addChildElement (new juce::XmlElement (*cachedFXState));
+    }
+
     copyXmlToBinary (*xml, destData);
 }
 
 void ARKAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr)
-        if (xmlState->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+    if (xmlState == nullptr)
+        return;
+
+    auto newState = juce::ValueTree::fromXml (*xmlState);
+    if (!newState.hasType (apvts.state.getType()))
+        return;
+
+    // Restore extra non-APVTS state before replacing (properties are on the tree)
+    currentFullPresetName   = newState.getProperty("currentFullPresetName",   "Init Preset").toString();
+    currentFullPresetFolder = newState.getProperty("currentFullPresetFolder", "User Presets").toString();
+    currentOscAPresetName   = newState.getProperty("currentOscAPresetName",   "---").toString();
+    currentOscBPresetName   = newState.getProperty("currentOscBPresetName",   "---").toString();
+    currentOscAPresetIndex  = (int)newState.getProperty("currentOscAPresetIndex", -1);
+    currentOscBPresetIndex  = (int)newState.getProperty("currentOscBPresetIndex", -1);
+    keyboardOctaveOffset.store((int)newState.getProperty("keyboardOctaveOffset", 0));
+    keyboardSemiOffset.store  ((int)newState.getProperty("keyboardSemiOffset",   0));
+
+    apvts.replaceState (newState);
+
+    // Cache and restore FX rack state
+    auto* fxStateXml = xmlState->getChildByName ("FXSTATE");
+    if (fxStateXml != nullptr)
+    {
+        cachedFXState = std::make_unique<juce::XmlElement> (*fxStateXml);
+
+        if (fxPage != nullptr)
+            fxPage->restoreFXState (fxStateXml);
+    }
 }
 
 //==============================================================================
@@ -3068,7 +3541,7 @@ std::unique_ptr<juce::XmlElement> ARKAudioProcessor::buildOscPresetXml (int oscI
         prefix + "Fine",    prefix + "Unison",   prefix + "Detune",
         prefix + "Blend",   prefix + "WtPos",    prefix + "Pan",
         prefix + "Level",   prefix + "Phase",    prefix + "Spread",
-        prefix + "Chaos"
+        prefix + "Chaos",   prefix + "StringMode", prefix + "ChoirMode"
     };
 
     for (const auto& id : paramIds)
@@ -3090,7 +3563,7 @@ void ARKAudioProcessor::applyOscPresetXml (int oscIndex, const juce::XmlElement&
         prefix + "Fine",    prefix + "Unison",   prefix + "Detune",
         prefix + "Blend",   prefix + "WtPos",    prefix + "Pan",
         prefix + "Level",   prefix + "Phase",    prefix + "Spread",
-        prefix + "Chaos"
+        prefix + "Chaos",   prefix + "StringMode", prefix + "ChoirMode"
     };
 
     for (const auto& id : paramIds)

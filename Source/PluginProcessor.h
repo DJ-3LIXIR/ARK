@@ -50,6 +50,39 @@ struct Voice
 
     // ---- Voice Age (for stealing) ----
     unsigned long long voiceStartTime = 0;
+
+    // ---- String Synthesis State (per oscillator) ----
+    struct StringState
+    {
+        float harmonicAmplitude[16] = {0.f};
+        float harmonicPhase[16]     = {0.f};
+        float harmonicDecayRate[16] = {0.f};  // Precomputed per-harmonic decay
+        float excitationEnergy      = 0.0f;
+        float stringDamping         = 0.5f;
+        float strikePosition        = 0.15f;
+        unsigned int stringMode     = 0;      // 0=Off, 1=Pluck, 2=Strum, 3=Pizz, 4=Arco
+    };
+
+    StringState stringA;  // String state for OSC A
+    StringState stringB;  // String state for OSC B
+
+    // ---- Choir Sampler State (per oscillator) ----
+    struct ChoirSamplerState
+    {
+        double readPos      = 0.0;   // fractional sample position in buffer
+        int    choirMode    = 0;     // 0=Off, 1=OOH, 2=AAH, 3=Women, 4=Men
+        bool   isPlaying    = false;
+
+        void reset()
+        {
+            readPos   = 0.0;
+            isPlaying = false;
+            choirMode = 0;
+        }
+    };
+
+    ChoirSamplerState choirA;  // Choir sampler state for OSC A
+    ChoirSamplerState choirB;  // Choir sampler state for OSC B
 };
 
 //==============================================================================
@@ -192,6 +225,12 @@ public:
     // Helper to create the APVTS parameter layout
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
+    // FXPage pointer — set by editor for state serialization
+    class FXPage* fxPage = nullptr;
+
+    // Cached FX rack state — survives editor destruction/recreation
+    std::unique_ptr<juce::XmlElement> cachedFXState;
+
     // =========================================================================
     // OSC Preset Management (public API for the editor)
     // =========================================================================
@@ -249,10 +288,37 @@ public:
     std::atomic<int> keyboardOctaveOffset { 0 };
     std::atomic<int> keyboardSemiOffset   { 0 };
 
+    // =========================================================================
+    // FX Rack Chain — written by FXPage (UI thread), read by processBlock (audio thread)
+    // =========================================================================
+    struct FXChainSlot
+    {
+        juce::AudioProcessor* processor = nullptr;
+        bool powered = false;
+        bool muted   = false;
+    };
+
+    static constexpr int MAX_FX_SLOTS = 32;
+    juce::SpinLock fxChainLock;
+    FXChainSlot fxChain[MAX_FX_SLOTS];
+    std::atomic<int> numFxSlots { 0 };
+
 private:
     //==============================================================================
     static const int maxVoices = 32;
     Voice voices[maxVoices];
+
+    // -------------------------------------------------------------------------
+    // Choir Sample Buffers
+    // 0=OOH  1=AAH  2=Women  3=Men
+    // -------------------------------------------------------------------------
+    static const int numChoirSamples = 4;
+    juce::AudioBuffer<float>  choirSampleBuffers[numChoirSamples];
+    double                    choirSampleRoots[numChoirSamples] = { 174.614, 174.614, 174.614, 174.614 }; // D3 Hz
+    bool                      choirSamplesLoaded[numChoirSamples] = { false, false, false, false };
+    juce::AudioFormatManager  choirFormatManager;
+
+    void loadChoirSamples();
 
     static const int wavetableSize = 1024;
     static const int numWaveforms  = 4;
@@ -263,6 +329,11 @@ private:
     float getNextSampleForVoice (Voice& voice, int wavetableIndex,
                                  float octave, float semitone, float fine,
                                  float level, float phase, float wtPos) noexcept;
+    float getNextSampleForString (Voice::StringState& ss, float voiceLevel,
+                                  float frequency, int stringMode,
+                                  int numHarmonics) noexcept;
+    float getNextSampleForChoir (Voice::ChoirSamplerState& cs, float voiceLevel,
+                                 float frequency, int choirMode) noexcept;
     Voice* findFreeVoice();
     Voice* findVoicePlayingNote (int midiNote);
 
@@ -286,6 +357,13 @@ private:
     float hpPrevOutL = 0.0f;
     float hpPrevInR  = 0.0f;
     float hpPrevOutR = 0.0f;
+
+    // -------------------------------------------------------------------------
+    // FM Filter — OSC B modulates filter cutoff (per-sample state)
+    // oscBFmAccum tracks OSC B's phase for the FM filter modulator independently
+    // so it doesn't interfere with OSC B's audio output phase.
+    // -------------------------------------------------------------------------
+    float oscBFmAccum = 0.0f;   // per-block phase accumulator for FM filter mod
 
     // -------------------------------------------------------------------------
     // Noise Generator

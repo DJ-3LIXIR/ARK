@@ -10,6 +10,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "BinaryData.h"
 
 //==============================================================================
 ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
@@ -19,7 +20,53 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
 {
     setSize (1400, 800);
     addAndMakeVisible(contentComponent);
-    
+
+    // Load 3Lixir Music branding image from embedded BinaryData
+    elixirLogoImage = juce::ImageCache::getFromMemory(BinaryData::_3lixir_music_text_png,
+                                                       BinaryData::_3lixir_music_text_pngSize);
+
+    // Show desktop splash screen (once per process, like FL Studio)
+    {
+        static bool splashShown = false;
+        if (! splashShown)
+        {
+            splashShown = true;
+            juce::Image splashImg;
+
+            // Try BinaryData first
+            int splashSize = 0;
+            const char* splashData = BinaryData::getNamedResource("ARK_Splash_png", splashSize);
+            if (splashData != nullptr && splashSize > 0)
+                splashImg = juce::ImageCache::getFromMemory(splashData, splashSize);
+
+            // Fallback: load from file
+            if (! splashImg.isValid())
+            {
+                auto exeFile = juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+                auto searchDir = exeFile.getParentDirectory();
+                for (int i = 0; i < 8 && ! splashImg.isValid(); ++i)
+                {
+                    auto candidate = searchDir.getChildFile("Resources/ARK_Splash.png");
+                    if (candidate.existsAsFile())
+                        splashImg = juce::ImageFileFormat::loadFrom(candidate);
+                    searchDir = searchDir.getParentDirectory();
+                }
+            }
+
+            if (splashImg.isValid())
+            {
+                new DesktopSplash(splashImg, 3000, 800);  // 3s display, 0.8s fade — self-deletes
+
+                // Also show the editor overlay (lingers over the synth after it loads)
+                splashOverlay.setSplashImage(splashImg);
+                addAndMakeVisible(splashOverlay);
+                splashOverlay.toFront(false);
+                splashOverlay.setBounds(getLocalBounds());
+                splashOverlay.start(2500, 600);  // 2.5s display, 0.6s fade
+            }
+        }
+    }
+
     midiKeyboard.setLookAndFeel(&keyboardLookAndFeel);
     midiKeyboard.setOpaque(false);
     contentComponent.addAndMakeVisible(midiKeyboard);
@@ -95,6 +142,172 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     
     oscASineBtn.setToggleState(true, juce::dontSendNotification);
     oscBSawBtn.setToggleState(true, juce::dontSendNotification);
+
+    // =========================================================================
+    // OSC A/B Sub-page Selector Buttons (WFM / STR / CHR)
+    // =========================================================================
+    auto setupSubPageBtn = [this](juce::TextButton& btn, const juce::String& text, int radioGroup)
+    {
+        btn.setButtonText(text);
+        btn.setClickingTogglesState(true);
+        btn.setRadioGroupId(radioGroup);
+        btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
+        btn.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffD4A017));
+        btn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
+        btn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
+        contentComponent.addAndMakeVisible(btn);
+    };
+
+    setupSubPageBtn(oscAWfmBtn, "WFM", 2001);
+    setupSubPageBtn(oscAStrBtn, "STR", 2001);
+    setupSubPageBtn(oscAChrBtn, "CHR", 2001);
+    oscAWfmBtn.setToggleState(true, juce::dontSendNotification);
+    oscAWfmBtn.onClick = [this] { showOscASubPage(0); };
+    oscAStrBtn.onClick = [this] { showOscASubPage(1); };
+    oscAChrBtn.onClick = [this] { showOscASubPage(2); };
+
+    setupSubPageBtn(oscBWfmBtn, "WFM", 2002);
+    setupSubPageBtn(oscBStrBtn, "STR", 2002);
+    setupSubPageBtn(oscBChrBtn, "CHR", 2002);
+    oscBWfmBtn.setToggleState(true, juce::dontSendNotification);
+    oscBWfmBtn.onClick = [this] { showOscBSubPage(0); };
+    oscBStrBtn.onClick = [this] { showOscBSubPage(1); };
+    oscBChrBtn.onClick = [this] { showOscBSubPage(2); };
+
+    // =========================================================================
+    // OSC A/B String Grid Buttons (PLUCK / STRUM / PIZZ / ARCO)
+    // =========================================================================
+    auto setupGridBtn = [this](juce::TextButton& btn, const juce::String& text, int radioGroup)
+    {
+        btn.setButtonText(text);
+        btn.setClickingTogglesState(true);
+        btn.setRadioGroupId(radioGroup);
+        btn.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff2a2a2a));
+        btn.setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xffD4A017));
+        btn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
+        btn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
+        btn.setLookAndFeel(&waveBtnLookAndFeel);
+        contentComponent.addAndMakeVisible(btn);
+        btn.setVisible(false);
+    };
+
+    setupGridBtn(oscAPluckBtn, "PLUCK", 3001);
+    setupGridBtn(oscAStrumBtn, "STRUM", 3001);
+    setupGridBtn(oscAPizzBtn,  "PIZZ",  3001);
+    setupGridBtn(oscAArcoBtn,  "ARCO",  3001);
+    oscAPluckBtn.setToggleState(true, juce::dontSendNotification);
+
+    // Wire OSC A string buttons to set string mode parameter
+    oscAPluckBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAStringMode"))
+            p->setValueNotifyingHost(0.25f);
+        repaint();
+    };
+    oscAStrumBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAStringMode"))
+            p->setValueNotifyingHost(0.50f);
+        repaint();
+    };
+    oscAPizzBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAStringMode"))
+            p->setValueNotifyingHost(0.75f);
+        repaint();
+    };
+    oscAArcoBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAStringMode"))
+            p->setValueNotifyingHost(1.00f);
+        repaint();
+    };
+
+    setupGridBtn(oscBPluckBtn, "PLUCK", 3002);
+    setupGridBtn(oscBStrumBtn, "STRUM", 3002);
+    setupGridBtn(oscBPizzBtn,  "PIZZ",  3002);
+    setupGridBtn(oscBArcoBtn,  "ARCO",  3002);
+    oscBPluckBtn.setToggleState(true, juce::dontSendNotification);
+
+    // Wire OSC B string buttons to set string mode parameter
+    oscBPluckBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBStringMode"))
+            p->setValueNotifyingHost(0.25f);
+        repaint();
+    };
+    oscBStrumBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBStringMode"))
+            p->setValueNotifyingHost(0.50f);
+        repaint();
+    };
+    oscBPizzBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBStringMode"))
+            p->setValueNotifyingHost(0.75f);
+        repaint();
+    };
+    oscBArcoBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBStringMode"))
+            p->setValueNotifyingHost(1.00f);
+        repaint();
+    };
+
+    // =========================================================================
+    // OSC A/B Choir Grid Buttons (OOH / AAH / Women / Men)
+    // =========================================================================
+    setupGridBtn(oscAOohBtn, "OOH", 4001);
+    setupGridBtn(oscAAahBtn, "AAH", 4001);
+    setupGridBtn(oscAWomenBtn, "Women", 4001);
+    setupGridBtn(oscAMenBtn,   "Men",   4001);
+    oscAOohBtn.setToggleState(true, juce::dontSendNotification);
+
+    // Wire OSC A choir buttons to set choir mode parameter
+    // oscAChoirMode: 0=None, 1=OOH, 2=AAH, 3=Women, 4=Men
+    oscAOohBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAChoirMode"))
+            p->setValueNotifyingHost(0.25f);  // 1=OOH
+        repaint();
+    };
+    oscAAahBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAChoirMode"))
+            p->setValueNotifyingHost(0.50f);  // 2=AAH
+        repaint();
+    };
+    oscAWomenBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAChoirMode"))
+            p->setValueNotifyingHost(0.75f);  // 3=Women
+        repaint();
+    };
+    oscAMenBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscAChoirMode"))
+            p->setValueNotifyingHost(1.00f);  // 4=Men
+        repaint();
+    };
+
+    setupGridBtn(oscBOohBtn, "OOH", 4002);
+    setupGridBtn(oscBAahBtn, "AAH", 4002);
+    setupGridBtn(oscBWomenBtn, "Women", 4002);
+    setupGridBtn(oscBMenBtn,   "Men",   4002);
+    oscBOohBtn.setToggleState(true, juce::dontSendNotification);
+
+    // Wire OSC B choir buttons to set choir mode parameter
+    // oscBChoirMode: 0=None, 1=OOH, 2=AAH, 3=Women, 4=Men
+    oscBOohBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBChoirMode"))
+            p->setValueNotifyingHost(0.25f);  // 1=OOH
+        repaint();
+    };
+    oscBAahBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBChoirMode"))
+            p->setValueNotifyingHost(0.50f);  // 2=AAH
+        repaint();
+    };
+    oscBWomenBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBChoirMode"))
+            p->setValueNotifyingHost(0.75f);  // 3=Women
+        repaint();
+    };
+    oscBMenBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("oscBChoirMode"))
+            p->setValueNotifyingHost(1.00f);  // 4=Men
+        repaint();
+    };
+
     // -------------------------------------------------------------------------
     // OSC A Preset Controls
     // -------------------------------------------------------------------------
@@ -216,6 +429,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     setupKnob(filterDrive,     filterDriveLabel,     "DRIVE",    0.0,    100.0, 0.1,       0.0);
     setupKnob(filterEnvAmount, filterEnvAmountLabel, "ENV AMT", -100.0,  100.0, 0.1,       0.0);
     setupKnob(filterLfoAmount, filterLfoAmountLabel, "LFO AMT", -100.0,  100.0, 0.1,       0.0);
+    setupKnob(filterFmFilter, filterFmFilterLabel,  "FM FLT",    0.0,   100.0, 0.1,       0.0);
 
     // Repaint filter display when cutoff or resonance change
     filterCutoff.onValueChange    = [this] { repaint(); };
@@ -1306,9 +1520,9 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     styleGlobalCombo(globalWindowSizeBox);
     globalWindowSizeBox.onChange = [this] {
         globalWindowSize = globalWindowSizeBox.getSelectedId() - 1;
-        const int widths[]          = { 900, 1400, 1800 };
-        const int heightsWithKeys[] = { 514,  800, 1029 };
-        const int heightsNoKeys[]   = { 450,  700,  900 };
+        const int widths[]          = { 900, 1400, 1600 };
+        const int heightsWithKeys[] = { 514,  800,  914 };
+        const int heightsNoKeys[]   = { 450,  700,  800 };
         const int* heights = globalShowKeyboard ? heightsWithKeys : heightsNoKeys;
         setSize(widths[globalWindowSize], heights[globalWindowSize]);
     };
@@ -1331,9 +1545,9 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         semiPlusBtn.setVisible(globalShowKeyboard);
         semiValueLabel.setVisible(globalShowKeyboard);
         // Resize window to add/remove the 100px keyboard row
-        const int widths[]          = { 900, 1400, 1800 };
-        const int heightsWithKeys[] = { 514,  800, 1029 };
-        const int heightsNoKeys[]   = { 450,  700,  900 };
+        const int widths[]          = { 900, 1400, 1600 };
+        const int heightsWithKeys[] = { 514,  800,  914 };
+        const int heightsNoKeys[]   = { 450,  700,  800 };
         const int* heights = globalShowKeyboard ? heightsWithKeys : heightsNoKeys;
         setSize(widths[globalWindowSize], heights[globalWindowSize]);
         repaint();
@@ -1487,8 +1701,9 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     setupPageTab(matrixTabBtn, "MATRIX", 2);
     setupPageTab(globalTabBtn, "GLOBAL", 3);
 
-    // Preset button (header bar)
-    presetBtn.setButtonText("< Init Preset >");
+    // Preset button (header bar) — restore saved preset name from processor
+    currentPresetName = audioProcessor.getCurrentPresetName();
+    presetBtn.setButtonText("< " + currentPresetName + " >");
     presetBtn.setColour(juce::TextButton::buttonColourId,  juce::Colour(0xff2a2a2a));
     presetBtn.setColour(juce::TextButton::textColourOffId, juce::Colours::white.withAlpha(0.7f));
     contentComponent.addAndMakeVisible(presetBtn);
@@ -1801,6 +2016,24 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     noiseLfoAmountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "noiseLfoAmount", noiseLfoAmount);
 
+    noisePowerAttachment = std::make_unique<juce::ParameterAttachment>(
+        *audioProcessor.apvts.getParameter("noisePower"),
+        [this](float newValue) {
+            noisePowerBtn.setToggleState(newValue > 0.5f, juce::dontSendNotification);
+        }, nullptr);
+    noisePowerAttachment->sendInitialUpdate();
+
+    noiseTypeAttachment = std::make_unique<juce::ParameterAttachment>(
+        *audioProcessor.apvts.getParameter("noiseType"),
+        [this](float newValue) {
+            noiseCurrentType = static_cast<int>(newValue);
+            noiseWhiteBtn.setToggleState(noiseCurrentType == 0, juce::dontSendNotification);
+            noisePinkBtn.setToggleState(noiseCurrentType == 1, juce::dontSendNotification);
+            noiseBrownBtn.setToggleState(noiseCurrentType == 2, juce::dontSendNotification);
+            repaint();
+        }, nullptr);
+    noiseTypeAttachment->sendInitialUpdate();
+
     // -------------------------------------------------------------------------
     // ENV 1 (Amplitude) APVTS Attachments
     // -------------------------------------------------------------------------
@@ -1828,6 +2061,8 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         audioProcessor.apvts, "filterEnvAmount", filterEnvAmount);
     filterLfoAmountAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         audioProcessor.apvts, "filterLfoAmount", filterLfoAmount);
+    filterFmFilterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
+        audioProcessor.apvts, "modFmFilter", filterFmFilter);
  
     // =========================================================================
         // ENV 3 (Assignable Envelope) - Added below envelope display
@@ -1838,7 +2073,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         env3DestinationLabel.setFont (juce::Font (juce::FontOptions(11.0f).withStyle("Bold")));
         env3DestinationLabel.setColour (juce::Label::textColourId, juce::Colours::white);
         env3DestinationLabel.setJustificationType (juce::Justification::centred);
-        addAndMakeVisible (env3DestinationLabel);
+        contentComponent.addAndMakeVisible (env3DestinationLabel);
         
         // Destination dropdown (same style as filter character box)
         env3DestinationBox.addItem ("Filter Res", 1);
@@ -1850,7 +2085,7 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         env3DestinationBox.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff444444));
         env3DestinationBox.setColour (juce::ComboBox::textColourId, juce::Colours::white);
         env3DestinationBox.setColour (juce::ComboBox::arrowColourId, juce::Colour (0xff888888));
-        addAndMakeVisible (env3DestinationBox);
+        contentComponent.addAndMakeVisible (env3DestinationBox);
         
         // ENV 3 ADSR sliders
         setupKnob (env3Attack, env3AttackLabel, "ATK", 0.0, 5000.0, 1.0, 10.0);
@@ -1979,6 +2214,22 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
         env3SustainLabel.setVisible (false);
         env3ReleaseLabel.setVisible (false);
         env3AmountLabel.setVisible (false);
+
+    // Initialize FX Page (starts invisible, shown only when FX tab is clicked)
+    fxPage = std::make_unique<FXPage>(&audioProcessor);
+    fxPage->setBounds(0, 45, 1400, 585);
+    contentComponent.addChildComponent(*fxPage);
+    audioProcessor.fxPage = fxPage.get();  // Set pointer for state serialization
+
+    // Restore FX rack state from cache (survives editor close/reopen)
+    if (audioProcessor.cachedFXState != nullptr)
+        fxPage->restoreFXState (audioProcessor.cachedFXState.get());
+
+    fxPage->setVisible(false);
+
+    // Restore all button states from APVTS (osc pages, waveforms, toggles, etc.)
+    // Must be last so it reads the current parameter values and updates the UI correctly.
+    refreshButtonStatesFromAPVTS();
 }
 
 
@@ -2190,6 +2441,85 @@ void ARKAudioProcessorEditor::drawWaveform(juce::Graphics& g, int x, int y, int 
                 yPos += amplitude * (phase < 0.5f ? (4.0f * phase - 1.0f) : (3.0f - 4.0f * phase));
                 break;
             }
+            // ---- String modes ----
+            case 4: // Pluck: sharp attack, exponential decay with harmonics
+            {
+                float env = std::exp(-t * 5.0f);
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 6)
+                           + 0.5f * std::sin(t * juce::MathConstants<float>::twoPi * 12)
+                           + 0.25f * std::sin(t * juce::MathConstants<float>::twoPi * 18);
+                yPos += amplitude * env * harm * 0.5f;
+                break;
+            }
+            case 5: // Strum: staggered pluck attacks across strings
+            {
+                float wave = 0.0f;
+                for (int s = 0; s < 4; s++)
+                {
+                    float offset = s * 0.08f;
+                    float st = t - offset;
+                    if (st > 0.0f)
+                    {
+                        float env = std::exp(-st * 4.0f);
+                        wave += env * std::sin(st * juce::MathConstants<float>::twoPi * (5.0f + s * 2.0f));
+                    }
+                }
+                yPos += amplitude * wave * 0.3f;
+                break;
+            }
+            case 6: // Pizzicato: very short punchy attack, fast decay
+            {
+                float env = std::exp(-t * 12.0f);
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 8)
+                           + 0.7f * std::sin(t * juce::MathConstants<float>::twoPi * 16);
+                yPos += amplitude * env * harm * 0.55f;
+                break;
+            }
+            case 7: // Arco: gradual bow attack, sustained with vibrato
+            {
+                float attack = 1.0f - std::exp(-t * 4.0f);
+                float vibrato = 1.0f + 0.08f * std::sin(t * juce::MathConstants<float>::twoPi * 5);
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 3)
+                           + 0.4f * std::sin(t * juce::MathConstants<float>::twoPi * 6);
+                yPos += amplitude * attack * vibrato * harm * 0.5f;
+                break;
+            }
+            // ---- Choir modes ----
+            case 8: // OOH: smooth rounded, low harmonics (filtered)
+            {
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 3)
+                           + 0.3f * std::sin(t * juce::MathConstants<float>::twoPi * 6)
+                           + 0.08f * std::sin(t * juce::MathConstants<float>::twoPi * 9);
+                yPos += amplitude * harm * 0.6f;
+                break;
+            }
+            case 9: // AAH: brighter, more harmonics, wider shape
+            {
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 3)
+                           + 0.5f * std::sin(t * juce::MathConstants<float>::twoPi * 6)
+                           + 0.3f * std::sin(t * juce::MathConstants<float>::twoPi * 9)
+                           + 0.15f * std::sin(t * juce::MathConstants<float>::twoPi * 12);
+                yPos += amplitude * harm * 0.45f;
+                break;
+            }
+            case 10: // Women: higher frequency feel, tighter cycles
+            {
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 5)
+                           + 0.35f * std::sin(t * juce::MathConstants<float>::twoPi * 10)
+                           + 0.15f * std::sin(t * juce::MathConstants<float>::twoPi * 15);
+                float breath = 1.0f + 0.05f * std::sin(t * juce::MathConstants<float>::twoPi * 1.5f);
+                yPos += amplitude * harm * breath * 0.5f;
+                break;
+            }
+            case 11: // Men: lower frequency feel, fewer wider cycles
+            {
+                float harm = std::sin(t * juce::MathConstants<float>::twoPi * 2)
+                           + 0.45f * std::sin(t * juce::MathConstants<float>::twoPi * 4)
+                           + 0.2f * std::sin(t * juce::MathConstants<float>::twoPi * 6)
+                           + 0.1f * std::sin(t * juce::MathConstants<float>::twoPi * 8);
+                yPos += amplitude * harm * 0.5f;
+                break;
+            }
         }
 
         if (i == 0) wavePath.startNewSubPath(xPos, yPos);
@@ -2212,6 +2542,14 @@ void ARKAudioProcessorEditor::drawWaveform(juce::Graphics& g, int x, int y, int 
                 case 1: { float ph = std::fmod(t*2,1.0f); wave = amplitude*(2.0f*ph-1.0f); break; }
                 case 2: { float ph = std::fmod(t*2,1.0f); wave = amplitude*(ph<0.5f?1.0f:-1.0f); break; }
                 case 3: { float ph = std::fmod(t*2,1.0f); wave = amplitude*(ph<0.5f?(4.0f*ph-1.0f):(3.0f-4.0f*ph)); break; }
+                case 4: { float env = std::exp(-t*5.0f); wave = amplitude*env*(std::sin(t*juce::MathConstants<float>::twoPi*6)+0.5f*std::sin(t*juce::MathConstants<float>::twoPi*12)+0.25f*std::sin(t*juce::MathConstants<float>::twoPi*18))*0.5f; break; }
+                case 5: { float w=0; for(int s=0;s<4;s++){float o=s*0.08f;float st=t-o;if(st>0)w+=std::exp(-st*4.0f)*std::sin(st*juce::MathConstants<float>::twoPi*(5.0f+s*2.0f));} wave=amplitude*w*0.3f; break; }
+                case 6: { float env = std::exp(-t*12.0f); wave = amplitude*env*(std::sin(t*juce::MathConstants<float>::twoPi*8)+0.7f*std::sin(t*juce::MathConstants<float>::twoPi*16))*0.55f; break; }
+                case 7: { float att=1.0f-std::exp(-t*4.0f); float vib=1.0f+0.08f*std::sin(t*juce::MathConstants<float>::twoPi*5); wave=amplitude*att*vib*(std::sin(t*juce::MathConstants<float>::twoPi*3)+0.4f*std::sin(t*juce::MathConstants<float>::twoPi*6))*0.5f; break; }
+                case 8: { wave=amplitude*(std::sin(t*juce::MathConstants<float>::twoPi*3)+0.3f*std::sin(t*juce::MathConstants<float>::twoPi*6)+0.08f*std::sin(t*juce::MathConstants<float>::twoPi*9))*0.6f; break; }
+                case 9: { wave=amplitude*(std::sin(t*juce::MathConstants<float>::twoPi*3)+0.5f*std::sin(t*juce::MathConstants<float>::twoPi*6)+0.3f*std::sin(t*juce::MathConstants<float>::twoPi*9)+0.15f*std::sin(t*juce::MathConstants<float>::twoPi*12))*0.45f; break; }
+                case 10: { float h=std::sin(t*juce::MathConstants<float>::twoPi*5)+0.35f*std::sin(t*juce::MathConstants<float>::twoPi*10)+0.15f*std::sin(t*juce::MathConstants<float>::twoPi*15); float b=1.0f+0.05f*std::sin(t*juce::MathConstants<float>::twoPi*1.5f); wave=amplitude*h*b*0.5f; break; }
+                case 11: { wave=amplitude*(std::sin(t*juce::MathConstants<float>::twoPi*2)+0.45f*std::sin(t*juce::MathConstants<float>::twoPi*4)+0.2f*std::sin(t*juce::MathConstants<float>::twoPi*6)+0.1f*std::sin(t*juce::MathConstants<float>::twoPi*8))*0.5f; break; }
             }
 
             // Flip: mirror below centerY, scale down + offset slightly
@@ -2907,6 +3245,13 @@ void ARKAudioProcessorEditor::drawNoteCurve(juce::Graphics& g, int x, int y, int
 
 ARKAudioProcessorEditor::~ARKAudioProcessorEditor()
 {
+    // Cache FX rack state before the FXPage is destroyed
+    if (fxPage != nullptr)
+    {
+        audioProcessor.cachedFXState = fxPage->saveFXState();
+        audioProcessor.fxPage = nullptr;
+    }
+
     // Page tab buttons
     oscTabBtn.setLookAndFeel(nullptr);
     fxTabBtn.setLookAndFeel(nullptr);
@@ -3080,6 +3425,96 @@ void ARKAudioProcessorEditor::updateOctSemiDisplay()
     repaint();
 }
 
+// Osc A Sub-page Navigation (WFM / STR / CHR)
+// ============================================================================
+void ARKAudioProcessorEditor::showOscASubPage(int page, bool resetParams)
+{
+    oscASubPage = page;
+    oscAWfmBtn.setToggleState(page == 0, juce::dontSendNotification);
+    oscAStrBtn.setToggleState(page == 1, juce::dontSendNotification);
+    oscAChrBtn.setToggleState(page == 2, juce::dontSendNotification);
+
+    bool wfm = (page == 0);
+    oscASineBtn.setVisible(wfm);
+    oscASawBtn.setVisible(wfm);
+    oscASquareBtn.setVisible(wfm);
+    oscATriBtn.setVisible(wfm);
+
+    bool str = (page == 1);
+    oscAPluckBtn.setVisible(str);
+    oscAStrumBtn.setVisible(str);
+    oscAPizzBtn.setVisible(str);
+    oscAArcoBtn.setVisible(str);
+
+    bool chr = (page == 2);
+    oscAOohBtn.setVisible(chr);
+    oscAAahBtn.setVisible(chr);
+    oscAWomenBtn.setVisible(chr);
+    oscAMenBtn.setVisible(chr);
+
+    if (resetParams)
+    {
+        // Reset string mode when leaving STR page so wavetable works again
+        if (page != 1)
+        {
+            if (auto* p = audioProcessor.apvts.getParameter("oscAStringMode"))
+                p->setValueNotifyingHost(0.0f);  // None
+        }
+
+        // Reset choir mode when leaving CHR page so wavetable works again
+        if (page != 2)
+        {
+            if (auto* p = audioProcessor.apvts.getParameter("oscAChoirMode"))
+                p->setValueNotifyingHost(0.0f);  // None
+        }
+    }
+}
+
+// Osc B Sub-page Navigation (WFM / STR / CHR)
+// ============================================================================
+void ARKAudioProcessorEditor::showOscBSubPage(int page, bool resetParams)
+{
+    oscBSubPage = page;
+    oscBWfmBtn.setToggleState(page == 0, juce::dontSendNotification);
+    oscBStrBtn.setToggleState(page == 1, juce::dontSendNotification);
+    oscBChrBtn.setToggleState(page == 2, juce::dontSendNotification);
+
+    bool wfm = (page == 0);
+    oscBSineBtn.setVisible(wfm);
+    oscBSawBtn.setVisible(wfm);
+    oscBSquareBtn.setVisible(wfm);
+    oscBTriBtn.setVisible(wfm);
+
+    bool str = (page == 1);
+    oscBPluckBtn.setVisible(str);
+    oscBStrumBtn.setVisible(str);
+    oscBPizzBtn.setVisible(str);
+    oscBArcoBtn.setVisible(str);
+
+    bool chr = (page == 2);
+    oscBOohBtn.setVisible(chr);
+    oscBAahBtn.setVisible(chr);
+    oscBWomenBtn.setVisible(chr);
+    oscBMenBtn.setVisible(chr);
+
+    if (resetParams)
+    {
+        // Reset string mode when leaving STR page so wavetable works again
+        if (page != 1)
+        {
+            if (auto* p = audioProcessor.apvts.getParameter("oscBStringMode"))
+                p->setValueNotifyingHost(0.0f);  // None
+        }
+
+        // Reset choir mode when leaving CHR page so wavetable works again
+        if (page != 2)
+        {
+            if (auto* p = audioProcessor.apvts.getParameter("oscBChoirMode"))
+                p->setValueNotifyingHost(0.0f);  // None
+        }
+    }
+}
+
 // Page Navigation - show/hide components based on active page
 // ============================================================================
 void ARKAudioProcessorEditor::showPage(int pageIndex)
@@ -3095,11 +3530,23 @@ void ARKAudioProcessorEditor::showPage(int pageIndex)
     bool oscVisible = (pageIndex == 0);
 
     // ---- OSC A ----
-    oscASineBtn.setVisible(oscVisible);
-    oscASawBtn.setVisible(oscVisible);
-    oscASquareBtn.setVisible(oscVisible);
-    oscATriBtn.setVisible(oscVisible);
     oscAPowerBtn.setVisible(oscVisible);
+    oscAWfmBtn.setVisible(oscVisible);
+    oscAStrBtn.setVisible(oscVisible);
+    oscAChrBtn.setVisible(oscVisible);
+    if (oscVisible)
+    {
+        showOscASubPage(oscASubPage, false);  // visibility only — don't reset params
+    }
+    else
+    {
+        oscASineBtn.setVisible(false);   oscASawBtn.setVisible(false);
+        oscASquareBtn.setVisible(false); oscATriBtn.setVisible(false);
+        oscAPluckBtn.setVisible(false);  oscAStrumBtn.setVisible(false);
+        oscAPizzBtn.setVisible(false);   oscAArcoBtn.setVisible(false);
+        oscAOohBtn.setVisible(false);    oscAAahBtn.setVisible(false);
+        oscAWomenBtn.setVisible(false);    oscAMenBtn.setVisible(false);
+    }
     oscASaveBtn.setVisible(oscVisible);
     oscAPrevBtn.setVisible(oscVisible);
     oscANextBtn.setVisible(oscVisible);
@@ -3117,11 +3564,23 @@ void ARKAudioProcessorEditor::showPage(int pageIndex)
     oscAChaos.setVisible(oscVisible);      oscAChaosLabel.setVisible(oscVisible);
 
     // ---- OSC B ----
-    oscBSineBtn.setVisible(oscVisible);
-    oscBSawBtn.setVisible(oscVisible);
-    oscBSquareBtn.setVisible(oscVisible);
-    oscBTriBtn.setVisible(oscVisible);
     oscBPowerBtn.setVisible(oscVisible);
+    oscBWfmBtn.setVisible(oscVisible);
+    oscBStrBtn.setVisible(oscVisible);
+    oscBChrBtn.setVisible(oscVisible);
+    if (oscVisible)
+    {
+        showOscBSubPage(oscBSubPage, false);  // visibility only — don't reset params
+    }
+    else
+    {
+        oscBSineBtn.setVisible(false);   oscBSawBtn.setVisible(false);
+        oscBSquareBtn.setVisible(false); oscBTriBtn.setVisible(false);
+        oscBPluckBtn.setVisible(false);  oscBStrumBtn.setVisible(false);
+        oscBPizzBtn.setVisible(false);   oscBArcoBtn.setVisible(false);
+        oscBOohBtn.setVisible(false);    oscBAahBtn.setVisible(false);
+        oscBWomenBtn.setVisible(false);    oscBMenBtn.setVisible(false);
+    }
     oscBSaveBtn.setVisible(oscVisible);
     oscBPrevBtn.setVisible(oscVisible);
     oscBNextBtn.setVisible(oscVisible);
@@ -3163,6 +3622,7 @@ void ARKAudioProcessorEditor::showPage(int pageIndex)
     filterDrive.setVisible(oscVisible);       filterDriveLabel.setVisible(oscVisible);
     filterEnvAmount.setVisible(oscVisible);   filterEnvAmountLabel.setVisible(oscVisible);
     filterLfoAmount.setVisible(oscVisible);   filterLfoAmountLabel.setVisible(oscVisible);
+    filterFmFilter.setVisible(oscVisible);    filterFmFilterLabel.setVisible(oscVisible);
     filterLpBtn.setVisible(oscVisible);
     filterHpBtn.setVisible(oscVisible);
     filterBpBtn.setVisible(oscVisible);
@@ -3264,6 +3724,11 @@ void ARKAudioProcessorEditor::showPage(int pageIndex)
         matrixAmountSlider[i].setVisible(matrixVisible);
         matrixEnableBtn[i].setVisible(matrixVisible);
     }
+
+    // ---- FX PAGE widgets ----
+    bool fxVisible = (pageIndex == 1);
+    if (fxPage)
+        fxPage->setVisible(fxVisible);
 
     // ---- GLOBAL PAGE widgets ----
     bool globalVisible = (pageIndex == 3);
@@ -3402,6 +3867,7 @@ void ARKAudioProcessorEditor::openPresetBrowser()
             currentPresetName   = presetName;
             currentPresetFolder = folderName;
             presetBtn.setButtonText("< " + presetName + " >");
+            refreshButtonStatesFromAPVTS();
         }
         closePresetBrowser();
     };
@@ -3417,6 +3883,156 @@ void ARKAudioProcessorEditor::closePresetBrowser()
         removeChildComponent(presetOverlay.get());
         presetOverlay.reset();
     }
+}
+
+void ARKAudioProcessorEditor::refreshButtonStatesFromAPVTS()
+{
+    // Force-read current parameter values and update all button toggle states.
+    // Called after preset load to guarantee UI matches the restored state,
+    // since replaceState() doesn't always fire ParameterAttachment callbacks.
+
+    auto& apvts = audioProcessor.apvts;
+
+    // OSC A waveform
+    if (auto* p = apvts.getParameter("oscAWave"))
+    {
+        oscACurrentWave = static_cast<int>(p->convertFrom0to1(p->getValue()));
+        oscASineBtn.setToggleState(oscACurrentWave == 0, juce::dontSendNotification);
+        oscASawBtn.setToggleState(oscACurrentWave == 1, juce::dontSendNotification);
+        oscASquareBtn.setToggleState(oscACurrentWave == 2, juce::dontSendNotification);
+        oscATriBtn.setToggleState(oscACurrentWave == 3, juce::dontSendNotification);
+    }
+
+    // OSC B waveform
+    if (auto* p = apvts.getParameter("oscBWave"))
+    {
+        oscBCurrentWave = static_cast<int>(p->convertFrom0to1(p->getValue()));
+        oscBSineBtn.setToggleState(oscBCurrentWave == 0, juce::dontSendNotification);
+        oscBSawBtn.setToggleState(oscBCurrentWave == 1, juce::dontSendNotification);
+        oscBSquareBtn.setToggleState(oscBCurrentWave == 2, juce::dontSendNotification);
+        oscBTriBtn.setToggleState(oscBCurrentWave == 3, juce::dontSendNotification);
+    }
+
+    // OSC A/B power
+    if (auto* p = apvts.getParameter("oscAPower"))
+        oscAPowerBtn.setToggleState(p->getValue() > 0.5f, juce::dontSendNotification);
+    if (auto* p = apvts.getParameter("oscBPower"))
+        oscBPowerBtn.setToggleState(p->getValue() > 0.5f, juce::dontSendNotification);
+
+    // Sub oscillator
+    if (auto* p = apvts.getParameter("subWave"))
+    {
+        subCurrentWave = static_cast<int>(p->convertFrom0to1(p->getValue()));
+        subSineBtn.setToggleState(subCurrentWave == 0, juce::dontSendNotification);
+        subSquareBtn.setToggleState(subCurrentWave == 1, juce::dontSendNotification);
+    }
+    if (auto* p = apvts.getParameter("subPower"))
+        subPowerBtn.setToggleState(p->getValue() > 0.5f, juce::dontSendNotification);
+
+    // Noise type
+    if (auto* p = apvts.getParameter("noiseType"))
+    {
+        noiseCurrentType = static_cast<int>(p->convertFrom0to1(p->getValue()));
+        noiseWhiteBtn.setToggleState(noiseCurrentType == 0, juce::dontSendNotification);
+        noisePinkBtn.setToggleState(noiseCurrentType == 1, juce::dontSendNotification);
+        noiseBrownBtn.setToggleState(noiseCurrentType == 2, juce::dontSendNotification);
+    }
+    if (auto* p = apvts.getParameter("noisePower"))
+        noisePowerBtn.setToggleState(p->getValue() > 0.5f, juce::dontSendNotification);
+
+    // Filter mode
+    if (auto* p = apvts.getParameter("filterMode"))
+    {
+        filterCurrentType = static_cast<int>(p->convertFrom0to1(p->getValue()));
+        filterLpBtn.setToggleState(filterCurrentType == 0, juce::dontSendNotification);
+        filterHpBtn.setToggleState(filterCurrentType == 1, juce::dontSendNotification);
+        filterBpBtn.setToggleState(filterCurrentType == 2, juce::dontSendNotification);
+        filterNotchBtn.setToggleState(filterCurrentType == 3, juce::dontSendNotification);
+    }
+
+    // LFO 1 waveform
+    if (auto* p = apvts.getParameter("lfo1Wave"))
+    {
+        lfoCurrentWave = static_cast<int>(p->convertFrom0to1(p->getValue()));
+        lfoSineBtn.setToggleState(lfoCurrentWave == 0, juce::dontSendNotification);
+        lfoSawBtn.setToggleState(lfoCurrentWave == 1, juce::dontSendNotification);
+        lfoSquareBtn.setToggleState(lfoCurrentWave == 2, juce::dontSendNotification);
+        lfoTriBtn.setToggleState(lfoCurrentWave == 3, juce::dontSendNotification);
+    }
+
+    // Restore OSC A sub-page based on loaded parameters
+    {
+        int pageA = 0; // default WFM
+        int stringModeA = 0, choirModeA = 0;
+        if (auto* p = apvts.getParameter("oscAStringMode"))
+        {
+            stringModeA = static_cast<int>(p->convertFrom0to1(p->getValue()));
+            if (stringModeA > 0)
+                pageA = 1; // STR
+        }
+        if (auto* p = apvts.getParameter("oscAChoirMode"))
+        {
+            choirModeA = static_cast<int>(p->convertFrom0to1(p->getValue()));
+            if (choirModeA > 0)
+                pageA = 2; // CHR
+        }
+        showOscASubPage(pageA, false);  // don't reset params — we're restoring
+
+        // Restore string button toggle states
+        if (pageA == 1)
+        {
+            oscAPluckBtn.setToggleState(stringModeA == 1, juce::dontSendNotification);
+            oscAStrumBtn.setToggleState(stringModeA == 2, juce::dontSendNotification);
+            oscAPizzBtn.setToggleState (stringModeA == 3, juce::dontSendNotification);
+            oscAArcoBtn.setToggleState (stringModeA == 4, juce::dontSendNotification);
+        }
+        // Restore choir button toggle states
+        if (pageA == 2)
+        {
+            oscAOohBtn.setToggleState  (choirModeA == 1, juce::dontSendNotification);
+            oscAAahBtn.setToggleState  (choirModeA == 2, juce::dontSendNotification);
+            oscAWomenBtn.setToggleState(choirModeA == 3, juce::dontSendNotification);
+            oscAMenBtn.setToggleState  (choirModeA == 4, juce::dontSendNotification);
+        }
+    }
+
+    // Restore OSC B sub-page based on loaded parameters
+    {
+        int pageB = 0; // default WFM
+        int stringModeB = 0, choirModeB = 0;
+        if (auto* p = apvts.getParameter("oscBStringMode"))
+        {
+            stringModeB = static_cast<int>(p->convertFrom0to1(p->getValue()));
+            if (stringModeB > 0)
+                pageB = 1; // STR
+        }
+        if (auto* p = apvts.getParameter("oscBChoirMode"))
+        {
+            choirModeB = static_cast<int>(p->convertFrom0to1(p->getValue()));
+            if (choirModeB > 0)
+                pageB = 2; // CHR
+        }
+        showOscBSubPage(pageB, false);  // don't reset params — we're restoring
+
+        // Restore string button toggle states
+        if (pageB == 1)
+        {
+            oscBPluckBtn.setToggleState(stringModeB == 1, juce::dontSendNotification);
+            oscBStrumBtn.setToggleState(stringModeB == 2, juce::dontSendNotification);
+            oscBPizzBtn.setToggleState (stringModeB == 3, juce::dontSendNotification);
+            oscBArcoBtn.setToggleState (stringModeB == 4, juce::dontSendNotification);
+        }
+        // Restore choir button toggle states
+        if (pageB == 2)
+        {
+            oscBOohBtn.setToggleState  (choirModeB == 1, juce::dontSendNotification);
+            oscBAahBtn.setToggleState  (choirModeB == 2, juce::dontSendNotification);
+            oscBWomenBtn.setToggleState(choirModeB == 3, juce::dontSendNotification);
+            oscBMenBtn.setToggleState  (choirModeB == 4, juce::dontSendNotification);
+        }
+    }
+
+    repaint();
 }
 
 void ARKAudioProcessorEditor::paint (juce::Graphics& g)
@@ -3515,7 +4131,27 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText(oscAPresetName, oscAPresetBarX, oscAPresetBarY, oscAPresetBarW, oscAPresetBarH,
                    juce::Justification::centred);
     
-        drawWaveform(g, 220, 85, 200, 100, oscACurrentWave);
+        // Determine waveType for OSC A based on sub-page
+        {
+            int waveTypeA = oscACurrentWave;
+            if (oscASubPage == 1) // STR
+            {
+                if (auto* p = audioProcessor.apvts.getParameter("oscAStringMode"))
+                {
+                    int mode = static_cast<int>(p->convertFrom0to1(p->getValue()));
+                    if (mode >= 1 && mode <= 4) waveTypeA = 3 + mode; // 4=Pluck,5=Strum,6=Pizz,7=Arco
+                }
+            }
+            else if (oscASubPage == 2) // CHR
+            {
+                if (auto* p = audioProcessor.apvts.getParameter("oscAChoirMode"))
+                {
+                    int mode = static_cast<int>(p->convertFrom0to1(p->getValue()));
+                    if (mode >= 1 && mode <= 4) waveTypeA = 7 + mode; // 8=OOH,9=AAH,10=Women,11=Men
+                }
+            }
+            drawWaveform(g, 220, 85, 200, 100, waveTypeA);
+        }
 
         // OSC B panel
         g.setColour(juce::Colour(0xff222222));
@@ -3539,7 +4175,27 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText(oscBPresetName, oscBPresetBarX, oscBPresetBarY, oscBPresetBarW, oscBPresetBarH,
                    juce::Justification::centred);
     
-        drawWaveform(g, 650, 85, 200, 100, oscBCurrentWave);
+        // Determine waveType for OSC B based on sub-page
+        {
+            int waveTypeB = oscBCurrentWave;
+            if (oscBSubPage == 1) // STR
+            {
+                if (auto* p = audioProcessor.apvts.getParameter("oscBStringMode"))
+                {
+                    int mode = static_cast<int>(p->convertFrom0to1(p->getValue()));
+                    if (mode >= 1 && mode <= 4) waveTypeB = 3 + mode;
+                }
+            }
+            else if (oscBSubPage == 2) // CHR
+            {
+                if (auto* p = audioProcessor.apvts.getParameter("oscBChoirMode"))
+                {
+                    int mode = static_cast<int>(p->convertFrom0to1(p->getValue()));
+                    if (mode >= 1 && mode <= 4) waveTypeB = 7 + mode;
+                }
+            }
+            drawWaveform(g, 650, 85, 200, 100, waveTypeB);
+        }
 
         // Filter panel
         g.setColour(juce::Colour(0xff222222));
@@ -3688,12 +4344,8 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRect(1020, 11, 380, 1);
 
     g.setColour(juce::Colour(0xffD4A017));
-    g.setFont(juce::FontOptions(28.0f).withStyle("Bold"));
-    g.drawText("ARK", 20, 10, 100, 30, juce::Justification::centredLeft);
-
-    g.setColour(juce::Colours::white.withAlpha(0.5f));
-    g.setFont(juce::FontOptions(11.0f));
-    g.drawText("3LIXIR MUSIC", 20, 36, 150, 14, juce::Justification::centredLeft);
+    g.setFont(juce::FontOptions(42.0f).withStyle("Bold"));
+    g.drawText("ARK", 20, 4, 160, 48, juce::Justification::centredLeft);
     
     g.setColour(juce::Colour(0xffD4A017));
     g.fillRect(0, 695, 1400, 5);
@@ -3705,6 +4357,23 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
     // Black rectangle centered on gold bar with uniform 4px gold border (always visible)
     g.setColour(juce::Colours::black);
     g.fillRect(4, 634, 1392, 61);
+
+    // 3Lixir Music branding image — centered on the page in the bottom black strip (all pages)
+    if (elixirLogoImage.isValid())
+    {
+        const float stripY = 634.0f;
+        const float stripH = 61.0f;
+        // Scale image to fit the strip height with some padding
+        const float padding = 6.0f;
+        const float targetH = stripH - padding * 2.0f;
+        const float scale = targetH / (float) elixirLogoImage.getHeight();
+        const float targetW = (float) elixirLogoImage.getWidth() * scale;
+        const float imgX = (1400.0f - targetW) * 0.5f;  // centered on page
+        const float imgY = stripY + padding;
+        g.drawImage(elixirLogoImage,
+                    imgX, imgY, targetW, targetH,
+                    0, 0, elixirLogoImage.getWidth(), elixirLogoImage.getHeight());
+    }
 
     // Redraw border on top of gold bar - full dimensions to edges
     if (globalShowKeyboard)
@@ -3740,26 +4409,8 @@ void ARKAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText("VOICING", voicingPanelX, voicingY, voicingPanelW, voicingPanelH, juce::Justification::centred);
     } // end if (currentPage == 0) bottom bar labels
 
-    // =========================================================================
-    // FX PAGE (currentPage == 1)
-    // =========================================================================
-    if (currentPage == 1)
-    {
-        // Dark panel background
-        g.setColour(juce::Colour(0xff1e1e1e));
-        g.fillRoundedRectangle(20.0f, 85.0f, 1360.0f, 545.0f, 6.0f);
-
-        // Gold border
-        g.setColour(juce::Colour(0xffD4A017));
-        g.drawRoundedRectangle(20.0f, 85.0f, 1360.0f, 545.0f, 6.0f, 1.5f);
-
-        // Centered placeholder text
-        g.setColour(juce::Colour(0xffD4A017).withAlpha(0.5f));
-        g.setFont(juce::Font(juce::FontOptions(22.0f).withStyle("Italic")));
-        g.drawText("coming soon to a plug-in near you",
-                   20, 85, 1360, 545,
-                   juce::Justification::centred, true);
-    }
+    // FX PAGE is now rendered by the FXPage component
+    // (See showPage() for visibility management)
 
     // =========================================================================
     // MATRIX PAGE (currentPage == 2)
@@ -3957,6 +4608,13 @@ void ARKAudioProcessorEditor::resized()
     contentComponent.setTransform(juce::AffineTransform::scale(scale));
     contentComponent.setBounds(0, 0, 1400, juce::roundToInt((float)getHeight() / scale));
 
+    // Keep splash overlay covering the full editor window
+    if (splashOverlay.isVisible())
+    {
+        splashOverlay.setBounds(getLocalBounds());
+        splashOverlay.toFront(false);
+    }
+
     // Page navigation tab buttons
     oscTabBtn.setBounds(200, 10, 80, 30);
     fxTabBtn.setBounds(290, 10, 80, 30);
@@ -4042,6 +4700,23 @@ void ARKAudioProcessorEditor::resized()
     oscASquareBtn.setBounds(waveGridAX,                            waveGridAY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
     oscATriBtn.setBounds   (waveGridAX + waveBtnSize + waveBtnGap, waveGridAY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
 
+    // OSC A Sub-page selector buttons (stacked below PWR)
+    oscAWfmBtn.setBounds(20, 112, 50, 24);
+    oscAStrBtn.setBounds(20, 138, 50, 24);
+    oscAChrBtn.setBounds(20, 164, 50, 24);
+
+    // OSC A String grid buttons (same grid position as waveform)
+    oscAPluckBtn.setBounds(waveGridAX,                            waveGridAY,                            waveBtnSize, waveBtnSize);
+    oscAStrumBtn.setBounds(waveGridAX + waveBtnSize + waveBtnGap, waveGridAY,                            waveBtnSize, waveBtnSize);
+    oscAPizzBtn.setBounds (waveGridAX,                            waveGridAY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+    oscAArcoBtn.setBounds (waveGridAX + waveBtnSize + waveBtnGap, waveGridAY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+
+    // OSC A Choir grid buttons (same grid position as waveform)
+    oscAOohBtn.setBounds(waveGridAX,                            waveGridAY,                            waveBtnSize, waveBtnSize);
+    oscAAahBtn.setBounds(waveGridAX + waveBtnSize + waveBtnGap, waveGridAY,                            waveBtnSize, waveBtnSize);
+    oscAWomenBtn.setBounds(waveGridAX,                            waveGridAY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+    oscAMenBtn.setBounds(waveGridAX + waveBtnSize + waveBtnGap, waveGridAY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+
     // Knob rows ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¾ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¾ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â start at y=200, safely below the wave button grid
     const int oscAX = 20;
     const int oscAY = 200;
@@ -4091,6 +4766,23 @@ void ARKAudioProcessorEditor::resized()
     oscBSawBtn.setBounds   (waveGridBX + waveBtnSize + waveBtnGap, waveGridBY,                            waveBtnSize, waveBtnSize);
     oscBSquareBtn.setBounds(waveGridBX,                            waveGridBY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
     oscBTriBtn.setBounds   (waveGridBX + waveBtnSize + waveBtnGap, waveGridBY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+
+    // OSC B Sub-page selector buttons (stacked below PWR)
+    oscBWfmBtn.setBounds(450, 112, 50, 24);
+    oscBStrBtn.setBounds(450, 138, 50, 24);
+    oscBChrBtn.setBounds(450, 164, 50, 24);
+
+    // OSC B String grid buttons (same grid position as waveform)
+    oscBPluckBtn.setBounds(waveGridBX,                            waveGridBY,                            waveBtnSize, waveBtnSize);
+    oscBStrumBtn.setBounds(waveGridBX + waveBtnSize + waveBtnGap, waveGridBY,                            waveBtnSize, waveBtnSize);
+    oscBPizzBtn.setBounds (waveGridBX,                            waveGridBY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+    oscBArcoBtn.setBounds (waveGridBX + waveBtnSize + waveBtnGap, waveGridBY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+
+    // OSC B Choir grid buttons (same grid position as waveform)
+    oscBOohBtn.setBounds(waveGridBX,                            waveGridBY,                            waveBtnSize, waveBtnSize);
+    oscBAahBtn.setBounds(waveGridBX + waveBtnSize + waveBtnGap, waveGridBY,                            waveBtnSize, waveBtnSize);
+    oscBWomenBtn.setBounds(waveGridBX,                            waveGridBY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
+    oscBMenBtn.setBounds(waveGridBX + waveBtnSize + waveBtnGap, waveGridBY + waveBtnSize + waveBtnGap, waveBtnSize, waveBtnSize);
 
     const int oscBX = 450;
     const int oscBY = 200;
@@ -4171,6 +4863,8 @@ void ARKAudioProcessorEditor::resized()
     filterEnvAmountLabel.setBounds(fPanelX,               fRow2Y + knobSize + 2, knobSize, 12);
     filterLfoAmount.setBounds     (fPanelX + knobSpacing, fRow2Y, knobSize, knobSize);
     filterLfoAmountLabel.setBounds(fPanelX + knobSpacing, fRow2Y + knobSize + 2, knobSize, 12);
+    filterFmFilter.setBounds      (fPanelX + knobSpacing * 2, fRow2Y, knobSize, knobSize);
+    filterFmFilterLabel.setBounds (fPanelX + knobSpacing * 2, fRow2Y + knobSize + 2, knobSize, 12);
 
     // --- Right column: ADSR shifted down 30px too ---
     const int fEnvY = 252;

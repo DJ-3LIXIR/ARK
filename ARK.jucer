@@ -3,7 +3,7 @@
 <JUCERPROJECT id="ujG8Jp" name="ARK" projectType="audioplug" useAppConfig="0"
               addUsingNamespaceToJuceHeader="0" jucerFormatVersion="1" pluginCharacteristicsValue="pluginIsSynth,pluginProducesMidiOut,pluginWantsMidiIn"
               pluginManufacturer="3LIXIR Music" aaxIdentifier="com.3lixirmusic.ARK"
-              pluginFormats="buildAU,buildStandalone,buildVST,buildVST3">
+              pluginFormats="buildAU,buildStandalone,buildVST3">
   <MAINGROUP id="llmTK8" name="ARK">
     <GROUP id="{3E9104F1-B76B-D4DF-EEC2-1CB0B5634753}" name="Source">
       <FILE id="Z1SrVd" name="PluginProcessor.cpp" compile="1" resource="0"
@@ -13,10 +13,81 @@
       <FILE id="LiBKRm" name="PluginEditor.cpp" compile="1" resource="0"
             file="Source/PluginEditor.cpp"/>
       <FILE id="jgA8BM" name="PluginEditor.h" compile="0" resource="0" file="Source/PluginEditor.h"/>
+      <FILE id="FXPageCpp" name="FXPage.cpp" compile="1" resource="0"
+            file="Source/FXPage.cpp"/>
+      <FILE id="FXPageH" name="FXPage.h" compile="0" resource="0" file="Source/FXPage.h"/>
+      <GROUP id="{HADES_GROUP_001}" name="Hades">
+        <FILE id="HadesProcessorCpp" name="PluginProcessor.cpp" compile="1" resource="0"
+              file="Source/Hades/PluginProcessor.cpp"/>
+        <FILE id="HadesProcessorH" name="PluginProcessor.h" compile="0" resource="0"
+              file="Source/Hades/PluginProcessor.h"/>
+        <FILE id="HadesEditorCpp" name="PluginEditor.cpp" compile="1" resource="0"
+              file="Source/Hades/PluginEditor.cpp"/>
+        <FILE id="HadesEditorH" name="PluginEditor.h" compile="0" resource="0"
+              file="Source/Hades/PluginEditor.h"/>
+      </GROUP>
+      <GROUP id="{APOLLO_GROUP_001}" name="Apollo">
+        <FILE id="ApolloProcessorCpp" name="PluginProcessor.cpp" compile="1" resource="0"
+              file="Source/Apollo/PluginProcessor.cpp"/>
+        <FILE id="ApolloProcessorH" name="PluginProcessor.h" compile="0" resource="0"
+              file="Source/Apollo/PluginProcessor.h"/>
+        <FILE id="ApolloEditorCpp" name="PluginEditor.cpp" compile="1" resource="0"
+              file="Source/Apollo/PluginEditor.cpp"/>
+        <FILE id="ApolloEditorH" name="PluginEditor.h" compile="0" resource="0"
+              file="Source/Apollo/PluginEditor.h"/>
+        <FILE id="ApolloReverbPageH" name="ReverbPage.h" compile="0" resource="0"
+              file="Source/Apollo/ReverbPage.h"/>
+        <FILE id="ApolloRoomSimPageH" name="RoomSimPage.h" compile="0" resource="0"
+              file="Source/Apollo/RoomSimPage.h"/>
+        <FILE id="ApolloSettingsPageH" name="SettingsPage.h" compile="0" resource="0"
+              file="Source/Apollo/SettingsPage.h"/>
+        <GROUP id="{APOLLO_DSP_GROUP}" name="DSP">
+          <FILE id="ApolloDSP_ReverbEngineCpp" name="ReverbEngine.cpp" compile="1" resource="0"
+                file="Source/Apollo/DSP/ReverbEngine.cpp"/>
+          <FILE id="ApolloDSP_ReverbEngineH" name="ReverbEngine.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/ReverbEngine.h"/>
+          <FILE id="ApolloDSP_RoomSimEngineCpp" name="RoomSimEngine.cpp" compile="1" resource="0"
+                file="Source/Apollo/DSP/RoomSimEngine.cpp"/>
+          <FILE id="ApolloDSP_RoomSimEngineH" name="RoomSimEngine.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/RoomSimEngine.h"/>
+          <FILE id="ApolloDSP_EarlyReflH" name="EarlyReflections.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/EarlyReflections.h"/>
+          <FILE id="ApolloDSP_FDNH" name="FDNReverb.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/FDNReverb.h"/>
+          <FILE id="ApolloDSP_FreqRespH" name="FrequencyResponseCalculator.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/FrequencyResponseCalculator.h"/>
+          <FILE id="ApolloDSP_ModLFOH" name="ModulationLFO.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/ModulationLFO.h"/>
+          <FILE id="ApolloDSP_OutputEQH" name="OutputEQ.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/OutputEQ.h"/>
+          <FILE id="ApolloDSP_PreDelayH" name="PreDelayLine.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/PreDelayLine.h"/>
+          <FILE id="ApolloDSP_RoomSimPresetsH" name="RoomSimPresets.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/RoomSimPresets.h"/>
+          <FILE id="ApolloDSP_RoomTypePresetsH" name="RoomTypePresets.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/RoomTypePresets.h"/>
+          <FILE id="ApolloDSP_SmoothedParamH" name="SmoothedParam.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/SmoothedParam.h"/>
+          <FILE id="ApolloDSP_StereoWidthH" name="StereoWidthProcessor.h" compile="0" resource="0"
+                file="Source/Apollo/DSP/StereoWidthProcessor.h"/>
+        </GROUP>
+      </GROUP>
+      <GROUP id="{ORION_GROUP_001}" name="Orion">
+        <FILE id="OrionProcessorCpp" name="PluginProcessor.cpp" compile="1" resource="0"
+              file="Source/Orion/PluginProcessor.cpp"/>
+        <FILE id="OrionProcessorH" name="PluginProcessor.h" compile="0" resource="0"
+              file="Source/Orion/PluginProcessor.h"/>
+        <FILE id="OrionEditorCpp" name="PluginEditor.cpp" compile="1" resource="0"
+              file="Source/Orion/PluginEditor.cpp"/>
+        <FILE id="OrionEditorH" name="PluginEditor.h" compile="0" resource="0"
+              file="Source/Orion/PluginEditor.h"/>
+      </GROUP>
     </GROUP>
     <GROUP id="{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}" name="Resources">
       <FILE id="ARK_ICON_ID" name="ARK.icns" compile="0" resource="1" file="Resources/ARK.icns"
             xcodeResource="1"/>
+      <FILE id="ELIXIR_LOGO_ID" name="3lixir_music_text.png" compile="0"
+            resource="1" file="Resources/3lixir_music_text.png"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -82,7 +153,9 @@
         <MODULEPATH id="juce_audio_plugin_client" path="../../JUCE/modules"/>
       </MODULEPATHS>
     </VS2026>
-    <XCODE_MAC targetFolder="Builds/MacOSX" largeIcon="Resources/ARK.icns">
+    <XCODE_MAC targetFolder="Builds/MacOSX" largeIcon="Resources/ARK.icns"
+              headerPath="../../Source/Hades&#10;../../Source/Apollo&#10;../../Source/Apollo/DSP&#10;../../Source/Orion"
+              postbuildCommand="SAMPLES_SRC=&quot;${PROJECT_DIR}/../../Samples&quot;; if [ -d &quot;$SAMPLES_SRC&quot; ]; then cp -R &quot;$SAMPLES_SRC&quot; &quot;${TARGET_BUILD_DIR}/Samples&quot; 2&gt;/dev/null || true; for BUNDLE in &quot;${TARGET_BUILD_DIR}&quot;/*.component &quot;${TARGET_BUILD_DIR}&quot;/*.vst3 &quot;${TARGET_BUILD_DIR}&quot;/*.app; do if [ -d &quot;$BUNDLE&quot; ]; then mkdir -p &quot;$BUNDLE/Contents/Resources&quot;; cp -R &quot;$SAMPLES_SRC&quot; &quot;$BUNDLE/Contents/Resources/Samples&quot; 2&gt;/dev/null || true; fi; done; fi">
       <CONFIGURATIONS>
         <CONFIGURATION isDebug="1" name="Debug" targetName="ARK"/>
         <CONFIGURATION isDebug="0" name="Release" targetName="ARK"/>

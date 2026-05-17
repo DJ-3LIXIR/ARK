@@ -8,6 +8,7 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "FXPage.h"
 
 //==============================================================================
 // Custom Look and Feel for Keyboard
@@ -535,6 +536,13 @@ private:
         else
             totalPages = 1;
         if (totalPages < 1) totalPages = 1;
+
+        // Update pagination button visibility/state to match new totalPages
+        bool needsPagination = totalPages > 1;
+        prevPageBtn.setVisible (needsPagination);
+        nextPageBtn.setVisible (needsPagination);
+        prevPageBtn.setEnabled (currentPage > 0);
+        nextPageBtn.setEnabled (currentPage < totalPages - 1);
     }
 
     // Rebuilds the left-panel folder button list from folderNames
@@ -627,6 +635,168 @@ private:
 };
 
 //==============================================================================
+// Desktop Splash Screen
+//
+// A standalone top-level window that appears on the desktop (like FL Studio's
+// splash).  Shows the ARK logo, lingers for a few seconds, then fades out
+// and self-destructs.  Only shown once per process launch.
+//==============================================================================
+class DesktopSplash : public juce::Component, private juce::Timer
+{
+public:
+    DesktopSplash (const juce::Image& img, int displayMs = 3000, int fadeMs = 800)
+        : splashImage (img), displayTime (displayMs), fadeDuration (fadeMs)
+    {
+        setOpaque (false);
+
+        // Size the splash window — keep the image's aspect ratio
+        const float imgAspect = (float) img.getWidth() / (float) img.getHeight();
+        const int splashW = 520;
+        const int splashH = juce::roundToInt (splashW / imgAspect);
+        setSize (splashW, splashH);
+
+        // Centre on primary display
+        auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay();
+        if (display != nullptr)
+        {
+            auto area = display->userArea;
+            setTopLeftPosition (area.getCentreX() - splashW / 2,
+                                area.getCentreY() - splashH / 2);
+        }
+
+        // Borderless transparent window — no drop shadow (it kills transparency)
+        addToDesktop (juce::ComponentPeer::windowIsTemporary);
+
+        // On macOS, make the native window fully transparent
+        if (auto* peer = getPeer())
+        {
+            peer->setAlpha (1.0f);
+        }
+
+        setVisible (true);
+        toFront (true);
+
+        startTimerHz (60);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        // DON'T fill any background — let the image's alpha show through to desktop
+        if (splashImage.isValid())
+        {
+            g.setOpacity (opacity);
+            g.drawImage (splashImage,
+                         getLocalBounds().toFloat(),
+                         juce::RectanglePlacement::centred);
+        }
+    }
+
+private:
+    juce::Image splashImage;
+    float opacity      = 1.0f;
+    int   elapsed      = 0;
+    int   displayTime  = 3000;
+    int   fadeDuration = 800;
+
+    void timerCallback() override
+    {
+        elapsed += 16;   // ~60 fps
+
+        if (elapsed > displayTime)
+        {
+            float fadeElapsed = (float)(elapsed - displayTime);
+            opacity = 1.0f - juce::jlimit (0.0f, 1.0f, fadeElapsed / (float) fadeDuration);
+            repaint();
+
+            if (opacity <= 0.0f)
+            {
+                stopTimer();
+                removeFromDesktop();
+                delete this;   // self-destruct once fully faded
+            }
+        }
+    }
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DesktopSplash)
+};
+
+//==============================================================================
+// Editor Splash Overlay
+//
+// Semi-transparent overlay that covers the editor on startup, showing the ARK
+// logo.  Lingers after the synth UI appears, then fades out.
+//==============================================================================
+class SplashOverlay : public juce::Component, private juce::Timer
+{
+public:
+    SplashOverlay()
+    {
+        setOpaque (false);
+        setAlwaysOnTop (true);
+        setInterceptsMouseClicks (false, false);
+    }
+
+    void setSplashImage (const juce::Image& img) { splashImage = img; }
+
+    void start (int displayMs = 2500, int fadeMs = 600)
+    {
+        displayTime  = displayMs;
+        fadeDuration = fadeMs;
+        opacity      = 1.0f;
+        elapsed      = 0;
+        startTimerHz (60);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        // Dark semi-transparent backdrop
+        g.setColour (juce::Colours::black.withAlpha (0.85f * opacity));
+        g.fillAll();
+
+        if (splashImage.isValid())
+        {
+            const float maxW = getWidth()  * 0.5f;
+            const float maxH = getHeight() * 0.55f;
+            const float imgAspect = (float) splashImage.getWidth() / (float) splashImage.getHeight();
+            float drawW = maxW;
+            float drawH = drawW / imgAspect;
+            if (drawH > maxH) { drawH = maxH; drawW = drawH * imgAspect; }
+            const float x = (getWidth()  - drawW) * 0.5f;
+            const float y = (getHeight() - drawH) * 0.5f;
+
+            g.setOpacity (opacity);
+            g.drawImage (splashImage, x, y, drawW, drawH,
+                         0, 0, splashImage.getWidth(), splashImage.getHeight());
+        }
+    }
+
+private:
+    juce::Image splashImage;
+    float opacity      = 1.0f;
+    int   elapsed      = 0;
+    int   displayTime  = 2500;
+    int   fadeDuration = 600;
+
+    void timerCallback() override
+    {
+        elapsed += 16;
+        if (elapsed > displayTime)
+        {
+            float fadeElapsed = (float)(elapsed - displayTime);
+            opacity = 1.0f - juce::jlimit (0.0f, 1.0f, fadeElapsed / (float) fadeDuration);
+            repaint();
+            if (opacity <= 0.0f)
+            {
+                stopTimer();
+                setVisible (false);
+            }
+        }
+    }
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SplashOverlay)
+};
+
+//==============================================================================
 class ARKAudioProcessorEditor  : public juce::AudioProcessorEditor
 {
 public:
@@ -665,6 +835,16 @@ private:
     juce::TextButton oscASineBtn, oscASawBtn, oscASquareBtn, oscATriBtn;
     juce::TextButton oscAPowerBtn;
 
+    // OSC A Sub-page selector buttons
+    juce::TextButton oscAWfmBtn, oscAStrBtn, oscAChrBtn;
+    int oscASubPage = 0;  // 0=WFM, 1=STR, 2=CHR
+
+    // OSC A String buttons (page 1)
+    juce::TextButton oscAPluckBtn, oscAStrumBtn, oscAPizzBtn, oscAArcoBtn;
+
+    // OSC A Choir buttons (page 2)
+    juce::TextButton oscAOohBtn, oscAAahBtn, oscAWomenBtn, oscAMenBtn;
+
     // OSC A Preset controls
     juce::TextButton oscASaveBtn, oscAPrevBtn, oscANextBtn;
     juce::String oscAPresetName = "---";
@@ -682,6 +862,16 @@ private:
 
     juce::TextButton oscBSineBtn, oscBSawBtn, oscBSquareBtn, oscBTriBtn;
     juce::TextButton oscBPowerBtn;
+
+    // OSC B Sub-page selector buttons
+    juce::TextButton oscBWfmBtn, oscBStrBtn, oscBChrBtn;
+    int oscBSubPage = 0;  // 0=WFM, 1=STR, 2=CHR
+
+    // OSC B String buttons (page 1)
+    juce::TextButton oscBPluckBtn, oscBStrumBtn, oscBPizzBtn, oscBArcoBtn;
+
+    // OSC B Choir buttons (page 2)
+    juce::TextButton oscBOohBtn, oscBAahBtn, oscBWomenBtn, oscBMenBtn;
 
     // OSC B Preset controls
     juce::TextButton oscBSaveBtn, oscBPrevBtn, oscBNextBtn;
@@ -731,9 +921,9 @@ private:
     // Filter Controls
     // -------------------------------------------------------------------------
     juce::Slider filterCutoff, filterResonance, filterDrive;
-    juce::Slider filterEnvAmount, filterLfoAmount;
+    juce::Slider filterEnvAmount, filterLfoAmount, filterFmFilter;
     juce::Label  filterCutoffLabel, filterResonanceLabel, filterDriveLabel;
-    juce::Label  filterEnvAmountLabel, filterLfoAmountLabel;
+    juce::Label  filterEnvAmountLabel, filterLfoAmountLabel, filterFmFilterLabel;
 
     juce::TextButton filterLpBtn, filterHpBtn, filterBpBtn, filterNotchBtn;
     int filterCurrentType = 0;
@@ -827,6 +1017,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterEnvReleaseAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterEnvAmountAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterLfoAmountAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> filterFmFilterAttachment;
 
     juce::ComboBox env3DestinationBox;
     juce::Label    env3DestinationLabel;
@@ -1020,6 +1211,13 @@ private:
     juce::TextButton oscTabBtn, fxTabBtn, matrixTabBtn, globalTabBtn;
     int currentPage = 0;
     void showPage (int pageIndex);
+    void showOscASubPage (int page, bool resetParams = true);
+    void showOscBSubPage (int page, bool resetParams = true);
+
+    // -------------------------------------------------------------------------
+    // FX PAGE
+    // -------------------------------------------------------------------------
+    std::unique_ptr<FXPage> fxPage;
 
     // -------------------------------------------------------------------------
     // Preset System (header bar)
@@ -1035,6 +1233,7 @@ private:
     // Opens the preset browser overlay (browse / load)
     void openPresetBrowser();
     void closePresetBrowser();
+    void refreshButtonStatesFromAPVTS();
 
     // Opens the save dialog (name + folder selector) — wired to savePresetBtn
     void openSavePresetDialog();
@@ -1055,6 +1254,12 @@ private:
     int keyboardSemi   = 0;
 
     void updateOctSemiDisplay();
+
+    // 3Lixir Music branding image (bottom strip)
+    juce::Image elixirLogoImage;
+
+    // Editor splash overlay (lingers over the synth UI on startup)
+    SplashOverlay splashOverlay;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ARKAudioProcessorEditor)
 };
