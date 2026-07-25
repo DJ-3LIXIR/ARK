@@ -69,6 +69,12 @@ void OrionSoundEQAudioProcessor::prepareToPlay (double sampleRate, int samplesPe
     for (int b = 0; b < maxBands; ++b)
         for (int ch = 0; ch < 2; ++ch)
             filters[b][ch].reset();
+
+    // Reset spectrum analyzer to the noise floor
+    fftFifoIndex = 0;
+    const juce::SpinLock::ScopedLockType sl (spectrumLock);
+    for (int k = 0; k < numBins; ++k)
+        spectrumDB[k] = -120.0f;
 }
 
 void OrionSoundEQAudioProcessor::releaseResources()
@@ -180,6 +186,108 @@ void OrionSoundEQAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             maxRMS = rms;
     }
     currentRMSLevel.store (maxRMS);
+
+    // Feed post-EQ output into the spectrum analyzer (only when it's showing)
+    if (spectrumActive.load() && numChannels > 0)
+    {
+        const float* chL = buffer.getReadPointer (0);
+        const float* chR = (numChannels > 1) ? buffer.getReadPointer (1) : nullptr;
+        for (int n = 0; n < numSamples; ++n)
+        {
+            float mono = (chR != nullptr) ? 0.5f * (chL[n] + chR[n]) : chL[n];
+            pushSampleToFFT (mono);
+        }
+    }
+}
+
+//==============================================================================
+// Spectrum analyzer
+//==============================================================================
+
+void OrionSoundEQAudioProcessor::pushSampleToFFT (float sample) noexcept
+{
+    fftFifo[fftFifoIndex++] = sample;
+    if (fftFifoIndex >= fftSize)
+    {
+        fftFifoIndex = 0;
+        computeSpectrum();
+    }
+}
+
+void OrionSoundEQAudioProcessor::computeSpectrum() noexcept
+{
+    // Hann window into the real buffer; imaginary starts at zero.
+    for (int i = 0; i < fftSize; ++i)
+    {
+        float w = 0.5f * (1.0f - std::cos (juce::MathConstants<float>::twoPi * i / (fftSize - 1)));
+        fftReal[i] = fftFifo[i] * w;
+        fftImag[i] = 0.0f;
+    }
+
+    // In-place iterative radix-2 Cooley-Tukey FFT.
+    // Bit-reversal permutation.
+    for (int i = 1, j = 0; i < fftSize; ++i)
+    {
+        int bit = fftSize >> 1;
+        for (; j & bit; bit >>= 1)
+            j ^= bit;
+        j ^= bit;
+        if (i < j)
+        {
+            std::swap (fftReal[i], fftReal[j]);
+            std::swap (fftImag[i], fftImag[j]);
+        }
+    }
+
+    for (int len = 2; len <= fftSize; len <<= 1)
+    {
+        float ang = -juce::MathConstants<float>::twoPi / (float) len;
+        float wRealStep = std::cos (ang);
+        float wImagStep = std::sin (ang);
+        for (int i = 0; i < fftSize; i += len)
+        {
+            float wReal = 1.0f, wImag = 0.0f;
+            for (int k = 0; k < len / 2; ++k)
+            {
+                int a = i + k;
+                int b = i + k + len / 2;
+                float tReal = fftReal[b] * wReal - fftImag[b] * wImag;
+                float tImag = fftReal[b] * wImag + fftImag[b] * wReal;
+                fftReal[b] = fftReal[a] - tReal;
+                fftImag[b] = fftImag[a] - tImag;
+                fftReal[a] += tReal;
+                fftImag[a] += tImag;
+                float nwReal = wReal * wRealStep - wImag * wImagStep;
+                wImag = wReal * wImagStep + wImag * wRealStep;
+                wReal = nwReal;
+            }
+        }
+    }
+
+    // Convert to dBFS magnitudes and smooth against the previously published frame.
+    const juce::SpinLock::ScopedTryLockType sl (spectrumLock);
+    if (! sl.isLocked())
+        return;  // GUI is reading; skip this frame rather than block the audio thread
+
+    const float norm = 2.0f / (float) fftSize;   // single-sided magnitude scaling
+    for (int k = 0; k < numBins; ++k)
+    {
+        float mag = std::sqrt (fftReal[k] * fftReal[k] + fftImag[k] * fftImag[k]) * norm;
+        float db  = juce::Decibels::gainToDecibels (mag, -120.0f);
+        // Fast attack, slower release for a stable-looking analyzer.
+        float prev = spectrumDB[k];
+        spectrumDB[k] = (db > prev) ? db : prev + 0.25f * (db - prev);
+    }
+}
+
+void OrionSoundEQAudioProcessor::copySpectrumDB (float* dest, int numValues) noexcept
+{
+    const juce::SpinLock::ScopedLockType sl (spectrumLock);
+    int n = juce::jmin (numValues, numBins);
+    for (int i = 0; i < n; ++i)
+        dest[i] = spectrumDB[i];
+    for (int i = n; i < numValues; ++i)
+        dest[i] = -120.0f;
 }
 
 //==============================================================================

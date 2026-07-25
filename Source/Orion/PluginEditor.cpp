@@ -169,6 +169,11 @@ OrionSoundEQAudioProcessorEditor::OrionSoundEQAudioProcessorEditor (OrionSoundEQ
     // Spectrum Analyzer toggle
     styleButton(spectrumButton);
     spectrumButton.setClickingTogglesState(true);
+    spectrumButton.onClick = [this]()
+    {
+        audioProcessor.setSpectrumActive(spectrumButton.getToggleState());
+        repaint();
+    };
     addAndMakeVisible(spectrumButton);
 
     // MIDI Learn toggle
@@ -1445,6 +1450,10 @@ void OrionSoundEQAudioProcessorEditor::timerCallback()
     if (animPhase > juce::MathConstants<float>::twoPi * 100.0f)
         animPhase = 0.0f;
 
+    // Pull the latest analyzer frame while it's active
+    if (spectrumButton.getToggleState())
+        audioProcessor.copySpectrumDB(spectrumData, OrionSoundEQAudioProcessor::numBins);
+
     // Smooth aurora level based on audio RMS
     float rms = audioProcessor.getCurrentRMSLevel();
     float target = (rms > 0.001f) ? 1.0f : 0.0f;  // threshold to ignore noise floor
@@ -1484,6 +1493,74 @@ juce::Colour OrionSoundEQAudioProcessorEditor::getColourForBand(int index, int t
     // Use golden-ratio hue spacing for unlimited distinct colours
     float hue = std::fmod(index * 0.618033988749895f, 1.0f);
     return juce::Colour::fromHSL(hue, 0.85f, 0.6f, 1.0f);
+}
+
+void OrionSoundEQAudioProcessorEditor::drawSpectrum(juce::Graphics& g,
+                                                    juce::Rectangle<float> panel)
+{
+    const float panelX = panel.getX();
+    const float panelY = panel.getY();
+    const float panelW = panel.getWidth();
+    const float panelH = panel.getHeight();
+
+    double sr = audioProcessor.getSampleRate();
+    if (sr <= 0.0) sr = 44100.0;
+
+    // Analyzer's own dBFS window (independent of the EQ gain grid).
+    const float specMax = 0.0f;     // top of panel
+    const float specMin = -90.0f;   // bottom of panel
+    const int   fftSize = OrionSoundEQAudioProcessor::fftSize;
+    const int   numBins = OrionSoundEQAudioProcessor::numBins;
+
+    auto dbToY = [&](float db)
+    {
+        float t = juce::jlimit(0.0f, 1.0f, (db - specMin) / (specMax - specMin));
+        return panelY + (1.0f - t) * panelH;
+    };
+
+    // Build a smooth curve by walking x-pixels and sampling the nearest FFT bin.
+    juce::Path curve;
+    bool started = false;
+    for (float x = panelX; x <= panelX + panelW; x += 1.0f)
+    {
+        float freq = xToFreq(x, panelX, panelW);
+        int   bin  = (int) std::round(freq * (float) fftSize / (float) sr);
+        bin = juce::jlimit(1, numBins - 1, bin);
+        float y = dbToY(spectrumData[bin]);
+
+        if (! started) { curve.startNewSubPath(x, y); started = true; }
+        else           { curve.lineTo(x, y); }
+    }
+
+    if (! started)
+        return;
+
+    // Filled area under the curve
+    juce::Path fill = curve;
+    fill.lineTo(panelX + panelW, panelY + panelH);
+    fill.lineTo(panelX,          panelY + panelH);
+    fill.closeSubPath();
+
+    // Horizontal multicolour blend (hue sweeps across frequency), kept dark/subtle.
+    auto makeRainbow = [&](float lightness, float alpha)
+    {
+        auto c0 = juce::Colour::fromHSL(0.0f, 0.85f, lightness, alpha);
+        auto c1 = juce::Colour::fromHSL(0.9f, 0.85f, lightness, alpha);
+        juce::ColourGradient grad(c0, panelX, panelY, c1, panelX + panelW, panelY, false);
+        const int stops = 10;
+        for (int i = 1; i < stops; ++i)
+        {
+            float t = (float) i / (float) stops;
+            grad.addColour(t, juce::Colour::fromHSL(std::fmod(t * 0.9f, 1.0f), 0.85f, lightness, alpha));
+        }
+        return grad;
+    };
+
+    g.setGradientFill(makeRainbow(0.30f, 0.30f));   // dark, translucent fill
+    g.fillPath(fill);
+
+    g.setGradientFill(makeRainbow(0.45f, 0.70f));   // slightly brighter stroke
+    g.strokePath(curve, juce::PathStrokeType(1.2f));
 }
 
 void OrionSoundEQAudioProcessorEditor::updateBands(int bandCount)
@@ -1750,6 +1827,10 @@ void OrionSoundEQAudioProcessorEditor::drawEQGrid(juce::Graphics& g)
     // Clip all EQ drawing to the panel
     g.saveState();
     g.reduceClipRegion(panel.toNearestIntEdges());
+
+    // --- Spectrum analyzer sits behind the EQ curves ---
+    if (spectrumButton.getToggleState())
+        drawSpectrum(g, panel);
 
     // --- Draw band aurora fills and curves FIRST (behind grid) ---
     drawBandCurves(g, panel);

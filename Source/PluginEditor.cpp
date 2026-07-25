@@ -1216,8 +1216,8 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     {
         // Set this LFO's trigger mode to TRIG (0)
         juce::String paramId = "lfo" + juce::String(currentLfoTab + 1) + "TrigMode";
-        if (auto* param = audioProcessor.apvts.getRawParameterValue(paramId))
-            param->store(0.0f);
+        if (auto* param = audioProcessor.apvts.getParameter(paramId))
+            param->setValueNotifyingHost(param->convertTo0to1(0.0f));
         envTrigBtn.setToggleState(true, juce::dontSendNotification);
         envEnvBtn.setToggleState(false, juce::dontSendNotification);
         envOffBtn.setToggleState(false, juce::dontSendNotification);
@@ -1235,8 +1235,8 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     {
         // Set this LFO's trigger mode to FREE (1)
         juce::String paramId = "lfo" + juce::String(currentLfoTab + 1) + "TrigMode";
-        if (auto* param = audioProcessor.apvts.getRawParameterValue(paramId))
-            param->store(1.0f);
+        if (auto* param = audioProcessor.apvts.getParameter(paramId))
+            param->setValueNotifyingHost(param->convertTo0to1(1.0f));
         envTrigBtn.setToggleState(false, juce::dontSendNotification);
         envEnvBtn.setToggleState(true, juce::dontSendNotification);
         envOffBtn.setToggleState(false, juce::dontSendNotification);
@@ -1254,8 +1254,8 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     {
         // Set this LFO's trigger mode to OFF (2)
         juce::String paramId = "lfo" + juce::String(currentLfoTab + 1) + "TrigMode";
-        if (auto* param = audioProcessor.apvts.getRawParameterValue(paramId))
-            param->store(2.0f);
+        if (auto* param = audioProcessor.apvts.getParameter(paramId))
+            param->setValueNotifyingHost(param->convertTo0to1(2.0f));
         envTrigBtn.setToggleState(false, juce::dontSendNotification);
         envEnvBtn.setToggleState(false, juce::dontSendNotification);
         envOffBtn.setToggleState(true, juce::dontSendNotification);
@@ -1277,7 +1277,11 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     arpOnOffBtn.setColour(juce::TextButton::textColourOffId, juce::Colour(0xff888888));
     arpOnOffBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     arpOnOffBtn.setLookAndFeel(&waveBtnLookAndFeel);
-    arpOnOffBtn.onClick = [this] { isArpOn = arpOnOffBtn.getToggleState(); audioProcessor.apvts.getRawParameterValue("arpOnOff")->store(isArpOn ? 1.0f : 0.0f); };
+    arpOnOffBtn.onClick = [this] {
+        isArpOn = arpOnOffBtn.getToggleState();
+        if (auto* p = audioProcessor.apvts.getParameter("arpOnOff"))
+            p->setValueNotifyingHost(p->convertTo0to1(isArpOn ? 1.0f : 0.0f));
+    };
     contentComponent.addAndMakeVisible(arpOnOffBtn);
 
     // ARP mode button
@@ -1324,12 +1328,17 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     setupPatternBtn(arpOrderBtn, "ORD");
     arpUpBtn.setToggleState(true, juce::dontSendNotification);
 
-    // Pattern button onClick handlers - store to APVTS
-    arpUpBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpPattern")->store(0.0f); };
-    arpDownBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpPattern")->store(1.0f); };
-    arpUpDownBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpPattern")->store(2.0f); };
-    arpRandomBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpPattern")->store(3.0f); };
-    arpOrderBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpPattern")->store(4.0f); };
+    // Pattern button onClick handlers — write through the parameter so the
+    // value lands in the APVTS ValueTree and is captured by state/preset save.
+    auto setArpPattern = [this] (float value) {
+        if (auto* p = audioProcessor.apvts.getParameter("arpPattern"))
+            p->setValueNotifyingHost(p->convertTo0to1(value));
+    };
+    arpUpBtn.onClick     = [setArpPattern] { setArpPattern(0.0f); };
+    arpDownBtn.onClick   = [setArpPattern] { setArpPattern(1.0f); };
+    arpUpDownBtn.onClick = [setArpPattern] { setArpPattern(2.0f); };
+    arpRandomBtn.onClick = [setArpPattern] { setArpPattern(3.0f); };
+    arpOrderBtn.onClick  = [setArpPattern] { setArpPattern(4.0f); };
     
     // Latch button
     arpLatchBtn.setButtonText("LATCH");
@@ -1341,7 +1350,10 @@ ARKAudioProcessorEditor::ARKAudioProcessorEditor (ARKAudioProcessor& p)
     arpLatchBtn.setColour(juce::TextButton::textColourOnId, juce::Colours::black);
     arpLatchBtn.setLookAndFeel(&waveBtnLookAndFeel);
     contentComponent.addAndMakeVisible(arpLatchBtn);
-    arpLatchBtn.onClick = [this] { audioProcessor.apvts.getRawParameterValue("arpLatch")->store(arpLatchBtn.getToggleState() ? 1.0f : 0.0f); };
+    arpLatchBtn.onClick = [this] {
+        if (auto* p = audioProcessor.apvts.getParameter("arpLatch"))
+            p->setValueNotifyingHost(p->convertTo0to1(arpLatchBtn.getToggleState() ? 1.0f : 0.0f));
+    };
     
     // =========================================================================
     // MOD Section - horizontal layout
@@ -4031,6 +4043,28 @@ void ARKAudioProcessorEditor::refreshButtonStatesFromAPVTS()
             oscBMenBtn.setToggleState  (choirModeB == 4, juce::dontSendNotification);
         }
     }
+
+    // Arpeggiator on/off
+    if (auto* p = apvts.getParameter("arpOnOff"))
+    {
+        arpOnOffBtn.setToggleState(p->getValue() > 0.5f, juce::dontSendNotification);
+        isArpOn = p->getValue() > 0.5f;
+    }
+
+    // Arpeggiator pattern (Up / Down / UpDown / Random / Order)
+    if (auto* p = apvts.getParameter("arpPattern"))
+    {
+        const int pat = (int) p->convertFrom0to1(p->getValue());
+        arpUpBtn.setToggleState    (pat == 0, juce::dontSendNotification);
+        arpDownBtn.setToggleState  (pat == 1, juce::dontSendNotification);
+        arpUpDownBtn.setToggleState(pat == 2, juce::dontSendNotification);
+        arpRandomBtn.setToggleState(pat == 3, juce::dontSendNotification);
+        arpOrderBtn.setToggleState (pat == 4, juce::dontSendNotification);
+    }
+
+    // Arpeggiator latch
+    if (auto* p = apvts.getParameter("arpLatch"))
+        arpLatchBtn.setToggleState(p->getValue() > 0.5f, juce::dontSendNotification);
 
     repaint();
 }

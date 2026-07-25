@@ -261,6 +261,10 @@ private:
     float getBandGainAtFreq(const EQBand& band, float freq) const;
     static juce::Colour getColourForBand(int index, int total);
 
+    // Spectrum analyzer overlay
+    void drawSpectrum(juce::Graphics& g, juce::Rectangle<float> panel);
+    float spectrumData[OrionSoundEQAudioProcessor::numBins] = {};
+
     // Coordinate mapping
     float freqToX(float freq, float panelX, float panelW) const;
     float dBToY(float dB, float panelY, float panelH) const;

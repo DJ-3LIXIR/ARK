@@ -58,6 +58,20 @@ public:
     float getCurrentRMSLevel() const { return currentRMSLevel.load(); }
 
     //==============================================================================
+    // Spectrum analyzer (self-contained radix-2 FFT; no juce_dsp dependency)
+    static constexpr int fftOrder = 11;
+    static constexpr int fftSize  = 1 << fftOrder;   // 2048
+    static constexpr int numBins  = fftSize / 2;     // 1024 usable magnitude bins
+
+    // Enable/disable analysis (skips all FFT work when off).
+    void setSpectrumActive (bool shouldBeActive) noexcept { spectrumActive.store (shouldBeActive); }
+    bool isSpectrumActive() const noexcept               { return spectrumActive.load(); }
+
+    // Copy the latest smoothed magnitude spectrum (in dBFS) into dest[0..numValues-1].
+    // Thread-safe: called from the GUI thread.
+    void copySpectrumDB (float* dest, int numValues) noexcept;
+
+    //==============================================================================
     // DSP control methods (called from Editor on timer)
     void setBandParameters (int bandIndex, float freq, float gainDB, float Q, int filterType);
     void setNumActiveBands (int count);
@@ -123,6 +137,19 @@ private:
 
     // Sample rate stored for coefficient updates
     double currentSampleRate = 44100.0;
+
+    //==============================================================================
+    // Spectrum analyzer state
+    std::atomic<bool> spectrumActive { false };
+    float  fftFifo[fftSize]    = {};   // incoming samples (audio thread)
+    int    fftFifoIndex        = 0;
+    float  fftReal[fftSize]    = {};   // scratch (audio thread)
+    float  fftImag[fftSize]    = {};
+    float  spectrumDB[numBins] = {};   // published magnitudes, guarded by spectrumLock
+    juce::SpinLock spectrumLock;
+
+    void pushSampleToFFT (float sample) noexcept;  // audio thread
+    void computeSpectrum() noexcept;               // audio thread, when a block fills
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OrionSoundEQAudioProcessor)
